@@ -27,9 +27,12 @@ jobs:
     strategy:
       matrix:
         include:
-          - gfx_target: gfx1151
+          - gfx_target: gfx1100
             tag_prefix: ""
-            description: "Strix Halo (40 CUs)"
+            description: "Strix Halo with gfx1100 kernels (recommended)"
+          - gfx_target: gfx1151
+            tag_prefix: "gfx1151-"
+            description: "Strix Halo native (experimental)"
           - gfx_target: gfx1150
             tag_prefix: "gfx1150-"
             description: "Strix Point (16 CUs)"
