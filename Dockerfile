@@ -80,7 +80,7 @@ RUN cmake --build build --config Release -j$(nproc) \
     || (echo "ERROR: HIP not linked - build failed" && exit 1)
 
 # Stage artifacts for runtime image - include ROCm libs needed at runtime
-RUN mkdir -p /staging/bin /staging/lib/rocm \
+RUN mkdir -p /staging/bin /staging/lib/rocm /staging/rocblas \
     && cp -r build/bin/* /staging/bin/ 2>/dev/null || true \
     && find build -name "*.so" -exec cp {} /staging/lib/ \; 2>/dev/null || true \
     && echo "Copying ROCm runtime libraries..." \
@@ -93,8 +93,11 @@ RUN mkdir -p /staging/bin /staging/lib/rocm \
     && cp -aL /opt/rocm/lib/librocsolver.so* /staging/lib/rocm/ 2>/dev/null || true \
     && cp -aL /opt/rocm/lib/librocsparse.so* /staging/lib/rocm/ 2>/dev/null || true \
     && cp -aL /opt/rocm/lib/librocprim.so* /staging/lib/rocm/ 2>/dev/null || true \
+    && echo "Copying rocBLAS Tensile library (GPU kernels)..." \
+    && cp -r /opt/rocm/lib/rocblas /staging/rocblas/ \
     && echo "Staged binaries:" && ls -la /staging/bin \
-    && echo "Staged ROCm libs:" && ls -la /staging/lib/rocm/
+    && echo "Staged ROCm libs:" && ls -la /staging/lib/rocm/ \
+    && echo "Staged rocBLAS library:" && ls -la /staging/rocblas/
 
 # Runtime stage - smaller image using Strix Halo optimized image
 ARG RUNTIME_IMAGE
@@ -115,6 +118,8 @@ COPY --from=builder /staging/bin/ /app/
 COPY --from=builder /staging/lib/ /app/
 # Copy ROCm libraries and create symlinks
 COPY --from=builder /staging/lib/rocm/ /opt/rocm/lib/
+# Copy rocBLAS Tensile library (required for GPU kernels)
+COPY --from=builder /staging/rocblas/rocblas/ /opt/rocm/lib/rocblas/
 
 WORKDIR /app
 
