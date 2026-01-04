@@ -1,8 +1,4 @@
-# PowerInfer with ROCm for AMD Strix APUs
-#
-# GPU Targets:
-#   Strix Halo (gfx1151): use :latest image, HSA_OVERRIDE_GFX_VERSION=11.5.1
-#   Strix Point (gfx1150): use :gfx1150-latest image, HSA_OVERRIDE_GFX_VERSION=11.5.0
+# PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -30,39 +26,35 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          # For Strix Point, change to: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:gfx1150-latest
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:latest
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:26f9704
+          imagePullPolicy: Always
           command:
-            - ./main
+            - /app/server
           args:
             - --model
-            - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-2-7b-relu.powerinfer.gguf
+            - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
             - --ctx-size
             - "4096"
             - --n-gpu-layers
             - "999"
+            - --vram-budget
+            - "32"
             - --host
             - "0.0.0.0"
             - --port
             - "8080"
           env:
-            # ROCm environment for Strix Halo
+            # ROCm 6.4 with gfx1100 kernels (2-6x faster than native gfx1151)
             - name: ROCM_PATH
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
-            # For Strix Point, change to: "11.5.0"
             - name: HSA_OVERRIDE_GFX_VERSION
-              value: "11.5.1"
-            - name: AMDGPU_TARGETS
-              value: gfx1151
-            - name: GPU_TARGETS
-              value: gfx1151
+              value: "11.0.0"
+            - name: HSA_ENABLE_SDMA
+              value: "0"
             - name: LLAMA_HIP_UMA
               value: "ON"
-            - name: ROCBLAS_USE_HIPBLASLT
-              value: "1"
           ports:
             - containerPort: 8080
               name: http
@@ -74,11 +66,7 @@ spec:
             - name: dev-dri
               mountPath: /dev/dri
           securityContext:
-            capabilities:
-              add:
-                - SYS_PTRACE
-            seccompProfile:
-              type: Unconfined
+            privileged: true
           resources:
             limits:
               memory: 64Gi

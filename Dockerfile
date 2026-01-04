@@ -1,18 +1,18 @@
 # PowerInfer with ROCm for AMD Strix Halo (gfx1151) / Strix Point (gfx1150)
-# Based on ROCm 7.1.1 optimized for Strix Halo/Point UMA architecture
+# Based on ROCm 6.4 - recommended for Strix Halo (more stable than ROCm 7.x)
 #
 # Build: docker build -t powerinfer-rocm:latest .
 # Run:   docker run --device=/dev/kfd --device=/dev/dri -v /models:/models powerinfer-rocm:latest
 #
-# NOTE: PowerInfer is based on an older llama.cpp that is NOT compatible with
-# ROCm 7.x's updated hipBLAS API. The hipblasGemmEx function signature changed
-# in ROCm 7.x to use hipblasComputeType_t instead of hipDataType.
-# This Dockerfile applies a patch to fix the API compatibility.
+# NOTE: Uses HSA_OVERRIDE_GFX_VERSION=11.0.0 to leverage gfx1100 kernels
+# which are 2-6x faster than native gfx1151 kernels.
+# HSA_ENABLE_SDMA=0 prevents memory artifacts on APUs.
 
 # Use official ROCm dev image for building (has LLVM compiler + all dev tools)
-ARG BUILD_IMAGE=rocm/dev-ubuntu-22.04:7.1.1
+# ROCm 6.4.4 is recommended for Strix Halo (gfx1151) - more stable than 7.x
+ARG BUILD_IMAGE=rocm/dev-ubuntu-22.04:6.4
 # Use same ROCm image for runtime to ensure library compatibility
-ARG RUNTIME_IMAGE=rocm/dev-ubuntu-22.04:7.1.1
+ARG RUNTIME_IMAGE=rocm/dev-ubuntu-22.04:6.4
 
 FROM ${BUILD_IMAGE} AS builder
 
@@ -23,9 +23,11 @@ ARG POWERINFER_BRANCH=main
 
 # Environment for ROCm build
 # Set GPU targets via environment for HIP package detection
+# HSA_OVERRIDE_GFX_VERSION=11.0.0 uses gfx1100 kernels which are 2-6x faster than native gfx1151
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
-    HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    HSA_ENABLE_SDMA=0 \
     AMDGPU_TARGETS=${AMDGPU_TARGETS} \
     GPU_TARGETS=${AMDGPU_TARGETS} \
     HIP_VISIBLE_DEVICES=0 \
@@ -276,6 +278,7 @@ RUN hipcc --version && echo "HIP compiler found"
 # Note: PowerInfer's CMakeLists.txt uses LLAMA_HIPBLAS=ON to enable HIP support
 # The GPU target is picked up from the environment via find_package(hip)
 # We also pass -DHIPBLAS_V2=1 to enable the new ROCm 7.x API
+# Note: ROCm 6.4 uses original hipBLAS API, no HIPBLAS_V2 flag needed
 RUN cmake -S . -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
@@ -283,7 +286,6 @@ RUN cmake -S . -B build \
     -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang \
     -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/clang++ \
     -DLLAMA_HIPBLAS=ON \
-    -DCMAKE_CXX_FLAGS="-DHIPBLAS_V2=1" \
     -DCMAKE_HIP_ARCHITECTURES=${AMDGPU_TARGETS} \
     2>&1 | tee cmake_config.log \
     && echo "=== CMake Configuration Summary ===" \
@@ -337,14 +339,14 @@ FROM ${RUNTIME_IMAGE} AS runtime
 ARG AMDGPU_TARGETS
 
 # Runtime environment
-# HSA_OVERRIDE_GFX_VERSION helps with GPU detection for newer architectures
-# For gfx1150: 11.5.0, for gfx1151: 11.5.1
+# HSA_OVERRIDE_GFX_VERSION=11.0.0 uses gfx1100 kernels (2-6x faster than native gfx1151)
+# HSA_ENABLE_SDMA=0 prevents memory artifacts on APUs
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
-    HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    HSA_ENABLE_SDMA=0 \
     AMDGPU_TARGETS=${AMDGPU_TARGETS} \
     GPU_TARGETS=${AMDGPU_TARGETS} \
-    ROCBLAS_USE_HIPBLASLT=1 \
     PATH="/opt/rocm/bin:/app:${PATH}" \
     LD_LIBRARY_PATH="/opt/rocm/lib:/app"
 
@@ -366,6 +368,6 @@ CMD ["./main", "--help"]
 
 # Labels
 LABEL maintainer="PowerInfer ROCm Build" \
-      description="PowerInfer with ROCm 7.1.1 for AMD Strix Point/Halo (gfx1150/gfx1151)" \
-      rocm.version="7.1.1" \
+      description="PowerInfer with ROCm 6.4 for AMD Strix Point/Halo (gfx1150/gfx1151)" \
+      rocm.version="6.4" \
       gpu.target="${AMDGPU_TARGETS}"
