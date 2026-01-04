@@ -143,17 +143,21 @@ RUN cmake -S . -B build \
     && echo "=== CMake Configuration Summary ===" \
     && grep -i "hipblas\|hip\|rocm\|gpu\|target\|arch" cmake_config.log || true
 
-# Build and verify HIP was actually used
+# Build PowerInfer - MUST succeed
 RUN cmake --build build --config Release -j$(nproc) 2>&1 | tee build.log \
+    && echo "=== Build completed, verifying binaries ===" \
+    && ls -la build/bin/ \
+    && test -f build/bin/main || (echo "ERROR: Build failed - main binary not found!" && cat build.log && exit 1) \
     && echo "=== Checking if HIP libraries are linked ===" \
-    && (ldd build/bin/main 2>/dev/null | grep -i hip && echo "HIP libraries linked successfully") \
-    || (echo "WARNING: Could not verify HIP linking via ldd - checking build output..." \
-        && grep -i "ggml-rocm\|hipblas\|rocblas" build.log \
-        && echo "Build appears to include HIP components")
+    && (ldd build/bin/main 2>/dev/null | grep -i hip && echo "HIP libraries linked successfully") || true
 
 # Stage artifacts for runtime image - include ROCm libs needed at runtime
+# CRITICAL: Fail build if binaries don't exist
 RUN mkdir -p /staging/bin /staging/lib/rocm /staging/rocblas \
-    && cp -r build/bin/* /staging/bin/ 2>/dev/null || true \
+    && echo "=== Checking for built binaries ===" \
+    && ls -la build/bin/ \
+    && test -f build/bin/main || (echo "ERROR: build/bin/main not found - build failed!" && exit 1) \
+    && cp -r build/bin/* /staging/bin/ \
     && find build -name "*.so" -exec cp {} /staging/lib/ \; 2>/dev/null || true \
     && echo "Copying ROCm runtime libraries..." \
     && cp -aL /opt/rocm/lib/libhipblas.so* /staging/lib/rocm/ \
