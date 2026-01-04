@@ -48,6 +48,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     patch \
     hipblas-dev \
+    hipblaslt-dev \
     rocblas-dev \
     rocsolver-dev \
     rocsparse-dev \
@@ -313,6 +314,7 @@ RUN set -e && \
     cp -aL /opt/rocm/lib/libamdhip64.so* /staging/lib/rocm/ && \
     cp -aL /opt/rocm/lib/libhsa-runtime64.so* /staging/lib/rocm/ && \
     cp -aL /opt/rocm/lib/libamd_comgr.so* /staging/lib/rocm/ && \
+    (cp -aL /opt/rocm/lib/libhipblaslt.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/libhiprtc.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/librocsolver.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/librocsparse.so* /staging/lib/rocm/ 2>/dev/null || true) && \
