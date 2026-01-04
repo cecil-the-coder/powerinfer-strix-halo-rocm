@@ -104,5 +104,4 @@ jobs:
             org.opencontainers.image.description=PowerInfer with ROCm for ${{ matrix.description }}
           build-args: |
             AMDGPU_TARGETS=${{ matrix.gfx_target }}
-          cache-from: type=gha,scope=${{ matrix.gfx_target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.gfx_target }}
+          no-cache: true
