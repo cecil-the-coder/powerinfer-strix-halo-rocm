@@ -64,64 +64,202 @@ RUN pip3 install --no-cache-dir -r requirements.txt || true
 # ============================================================================
 # CRITICAL FIX: Patch PowerInfer's ggml-cuda.cu for ROCm 7.x API compatibility
 # ============================================================================
-# ROCm 7.x changed hipBLAS API: hipblasGemmEx now requires hipblasComputeType_t
-# instead of hipDataType for the compute_type parameter.
+# ROCm 7.x (hipBLAS 3.0+) changed the hipBLAS API:
+# - hipblasGemmEx, hipblasGemmBatchedEx, hipblasGemmStridedBatchedEx now require
+#   hipblasComputeType_t instead of hipDataType for the compute_type parameter.
 #
-# The old API (ROCm 6.x):
+# The old API (ROCm 6.x / hipBLAS < 3.0):
 #   hipblasGemmEx(..., hipDataType computeType, ...)
-# The new API (ROCm 7.x):
+# The new API (ROCm 7.x / hipBLAS 3.0+):
 #   hipblasGemmEx(..., hipblasComputeType_t computeType, ...)
 #
-# We need to:
-# 1. Add macro to convert CUDA compute types to hipblasComputeType_t
-# 2. Update the GEMM function calls to use the correct type
+# PowerInfer uses CUDA_R_16F/CUDA_R_32F (mapped to hipDataType) as the compute
+# type in GEMM calls. We need to create wrapper functions that:
+# 1. Convert hipDataType compute_type to hipblasComputeType_t
+# 2. Call the underlying hipBLAS function with the correct type
 # ============================================================================
 
-# Create patch for ROCm 7.x hipBLAS API compatibility
-RUN cat > /tmp/rocm7_hipblas_fix.patch << 'PATCH_EOF'
---- a/ggml-cuda.cu
-+++ b/ggml-cuda.cu
-@@ -28,6 +28,19 @@
- #define cudaDataType_t hipblasDatatype_t
- #define CUDA_R_16F HIPBLAS_R_16F
- #define CUDA_R_32F HIPBLAS_R_32F
-+
-+// ROCm 7.x API compatibility: hipblasGemmEx now uses hipblasComputeType_t
-+// instead of hipDataType for the compute_type parameter
-+#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)
-+// ROCm 7.x with HIPBLAS_V2: use hipblasComputeType_t
-+#define CUBLAS_COMPUTE_16F HIPBLAS_COMPUTE_16F
-+#define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F
-+#define CUBLAS_COMPUTE_32F_FAST_16F HIPBLAS_COMPUTE_32F_FAST_16F
-+#else
-+// ROCm 6.x or earlier: use hipDataType (mapped from CUDA types)
-+#define CUBLAS_COMPUTE_16F CUDA_R_16F
-+#define CUBLAS_COMPUTE_32F CUDA_R_32F
-+#define CUBLAS_COMPUTE_32F_FAST_16F CUDA_R_32F
-+#endif
- #define cublasGemmEx hipblasGemmEx
- #define cublasGemmBatchedEx hipblasGemmBatchedEx
- #define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx
-PATCH_EOF
+# Create comprehensive fix for ROCm 7.x hipBLAS API compatibility
+# This creates inline wrapper functions that handle the type conversion
+# IMPORTANT: We use inline functions with _rocm7_compat suffix to avoid recursion
+RUN cat > /tmp/rocm7_hipblas_fix.h << 'WRAPPER_EOF'
+// ROCm 7.x API compatibility wrappers for hipBLAS GEMM functions
+// hipBLAS 3.0+ changed compute_type parameter from hipDataType to hipblasComputeType_t
+//
+// This header MUST be included BEFORE any hipBLAS macros are defined, so that
+// we can call the real hipblasGemmEx functions inside our wrappers.
 
-# Apply the patch (allow fuzzy matching for line number differences)
-# Use -F0 to disable fuzz factor for cleaner patching
+#ifndef ROCM7_HIPBLAS_FIX_H
+#define ROCM7_HIPBLAS_FIX_H
+
+#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)
+
+#include <hipblas/hipblas.h>
+
+// Helper to convert hipDataType to hipblasComputeType_t
+static inline hipblasComputeType_t ggml_hipDataTypeToComputeType(hipDataType dtype) {
+    switch (dtype) {
+        case HIP_R_16F:
+            return HIPBLAS_COMPUTE_16F;
+        case HIP_R_32F:
+            return HIPBLAS_COMPUTE_32F;
+        case HIP_R_64F:
+            return HIPBLAS_COMPUTE_64F;
+        default:
+            return HIPBLAS_COMPUTE_32F;  // Safe default
+    }
+}
+
+// Wrapper for hipblasGemmEx that accepts hipDataType for compute_type
+// and converts it to hipblasComputeType_t
+// Named with _rocm7_compat suffix to avoid macro expansion issues
+static inline hipblasStatus_t ggml_hipblasGemmEx_rocm7_compat(
+    hipblasHandle_t handle,
+    hipblasOperation_t transA,
+    hipblasOperation_t transB,
+    int m, int n, int k,
+    const void* alpha,
+    const void* A, hipDataType aType, int lda,
+    const void* B, hipDataType bType, int ldb,
+    const void* beta,
+    void* C, hipDataType cType, int ldc,
+    hipDataType computeType,  // Accept hipDataType for compatibility
+    hipblasGemmAlgo_t algo)
+{
+    // Call the real hipblasGemmEx with converted compute type
+    return ::hipblasGemmEx(
+        handle, transA, transB,
+        m, n, k,
+        alpha,
+        A, aType, lda,
+        B, bType, ldb,
+        beta,
+        C, cType, ldc,
+        ggml_hipDataTypeToComputeType(computeType),  // Convert to hipblasComputeType_t
+        algo);
+}
+
+// Wrapper for hipblasGemmBatchedEx
+static inline hipblasStatus_t ggml_hipblasGemmBatchedEx_rocm7_compat(
+    hipblasHandle_t handle,
+    hipblasOperation_t transA,
+    hipblasOperation_t transB,
+    int m, int n, int k,
+    const void* alpha,
+    const void* const A[], hipDataType aType, int lda,
+    const void* const B[], hipDataType bType, int ldb,
+    const void* beta,
+    void* const C[], hipDataType cType, int ldc,
+    int batchCount,
+    hipDataType computeType,  // Accept hipDataType for compatibility
+    hipblasGemmAlgo_t algo)
+{
+    return ::hipblasGemmBatchedEx(
+        handle, transA, transB,
+        m, n, k,
+        alpha,
+        A, aType, lda,
+        B, bType, ldb,
+        beta,
+        C, cType, ldc,
+        batchCount,
+        ggml_hipDataTypeToComputeType(computeType),  // Convert to hipblasComputeType_t
+        algo);
+}
+
+// Wrapper for hipblasGemmStridedBatchedEx
+static inline hipblasStatus_t ggml_hipblasGemmStridedBatchedEx_rocm7_compat(
+    hipblasHandle_t handle,
+    hipblasOperation_t transA,
+    hipblasOperation_t transB,
+    int m, int n, int k,
+    const void* alpha,
+    const void* A, hipDataType aType, int lda, hipblasStride strideA,
+    const void* B, hipDataType bType, int ldb, hipblasStride strideB,
+    const void* beta,
+    void* C, hipDataType cType, int ldc, hipblasStride strideC,
+    int batchCount,
+    hipDataType computeType,  // Accept hipDataType for compatibility
+    hipblasGemmAlgo_t algo)
+{
+    return ::hipblasGemmStridedBatchedEx(
+        handle, transA, transB,
+        m, n, k,
+        alpha,
+        A, aType, lda, strideA,
+        B, bType, ldb, strideB,
+        beta,
+        C, cType, ldc, strideC,
+        batchCount,
+        ggml_hipDataTypeToComputeType(computeType),  // Convert to hipblasComputeType_t
+        algo);
+}
+
+#endif // __HIP_PLATFORM_AMD__ && HIPBLAS_V2
+
+#endif // ROCM7_HIPBLAS_FIX_H
+WRAPPER_EOF
+
+# Apply the fix:
+# 1. Copy the wrapper header to the source directory
+# 2. Create a Python script to apply the patches (more reliable than sed for multi-line)
+# 3. Modify the macro definitions to use our wrappers when HIPBLAS_V2 is defined
 RUN cd /build/powerinfer && \
-    if patch -p1 -F0 --dry-run < /tmp/rocm7_hipblas_fix.patch 2>/dev/null; then \
-        patch -p1 -F0 < /tmp/rocm7_hipblas_fix.patch && \
-        echo "Patch applied successfully"; \
+    cp /tmp/rocm7_hipblas_fix.h /build/powerinfer/rocm7_hipblas_fix.h && \
+    if grep -q "rocm7_hipblas_fix.h" ggml-cuda.cu; then \
+        echo "ROCm 7.x compatibility fix already present, skipping"; \
     else \
-        echo "Patch failed to apply cleanly, attempting manual insertion..."; \
-        if grep -q "CUBLAS_COMPUTE_16F" ggml-cuda.cu; then \
-            echo "Fix already present, skipping"; \
-        else \
-            awk '/#define CUDA_R_32F HIPBLAS_R_32F/{print; print ""; print "// ROCm 7.x API compatibility: hipblasGemmEx now uses hipblasComputeType_t"; print "// instead of hipDataType for the compute_type parameter"; print "#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)"; print "// ROCm 7.x with HIPBLAS_V2: use hipblasComputeType_t"; print "#define CUBLAS_COMPUTE_16F HIPBLAS_COMPUTE_16F"; print "#define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F"; print "#define CUBLAS_COMPUTE_32F_FAST_16F HIPBLAS_COMPUTE_32F_FAST_16F"; print "#else"; print "// ROCm 6.x or earlier: use hipDataType (mapped from CUDA types)"; print "#define CUBLAS_COMPUTE_16F CUDA_R_16F"; print "#define CUBLAS_COMPUTE_32F CUDA_R_32F"; print "#define CUBLAS_COMPUTE_32F_FAST_16F CUDA_R_32F"; print "#endif"; next}1' ggml-cuda.cu > ggml-cuda.cu.tmp && \
-            mv ggml-cuda.cu.tmp ggml-cuda.cu && \
-            echo "Manual fix applied via awk"; \
-        fi; \
+        echo "Applying ROCm 7.x hipBLAS API compatibility fix..." && \
+        python3 << 'PYEOF'
+import re
+
+with open('ggml-cuda.cu', 'r') as f:
+    content = f.read()
+
+# 1. Add include for rocm7_hipblas_fix.h after #if defined(GGML_USE_HIPBLAS)
+include_patch = '''#if defined(GGML_USE_HIPBLAS)
+// ROCm 7.x hipBLAS API compatibility - must include before macro definitions
+#if defined(HIPBLAS_V2)
+#include "rocm7_hipblas_fix.h"
+#endif'''
+content = content.replace('#if defined(GGML_USE_HIPBLAS)', include_patch, 1)
+
+# 2. Replace cublasGemmEx macro with conditional version
+old_gemm = '#define cublasGemmEx hipblasGemmEx'
+new_gemm = '''#if defined(HIPBLAS_V2)
+#define cublasGemmEx ggml_hipblasGemmEx_rocm7_compat
+#else
+#define cublasGemmEx hipblasGemmEx
+#endif'''
+content = content.replace(old_gemm, new_gemm, 1)
+
+# 3. Replace cublasGemmBatchedEx macro with conditional version
+old_batched = '#define cublasGemmBatchedEx hipblasGemmBatchedEx'
+new_batched = '''#if defined(HIPBLAS_V2)
+#define cublasGemmBatchedEx ggml_hipblasGemmBatchedEx_rocm7_compat
+#else
+#define cublasGemmBatchedEx hipblasGemmBatchedEx
+#endif'''
+content = content.replace(old_batched, new_batched, 1)
+
+# 4. Replace cublasGemmStridedBatchedEx macro with conditional version
+old_strided = '#define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx'
+new_strided = '''#if defined(HIPBLAS_V2)
+#define cublasGemmStridedBatchedEx ggml_hipblasGemmStridedBatchedEx_rocm7_compat
+#else
+#define cublasGemmStridedBatchedEx hipblasGemmStridedBatchedEx
+#endif'''
+content = content.replace(old_strided, new_strided, 1)
+
+with open('ggml-cuda.cu', 'w') as f:
+    f.write(content)
+
+print("Patches applied successfully")
+PYEOF
+        echo "Fix applied successfully"; \
     fi && \
     echo "=== Verifying fix was applied ===" && \
-    grep -A15 "CUDA_R_32F" ggml-cuda.cu | head -25
+    grep -n "rocm7_hipblas_fix\|HIPBLAS_V2\|ggml_hipblas" ggml-cuda.cu | head -30
 
 # Verify HIP is available before building
 RUN hipcc --version && echo "HIP compiler found"
