@@ -5,9 +5,9 @@
 # Run:   docker run --device=/dev/kfd --device=/dev/dri -v /models:/models powerinfer-rocm:latest
 
 # Use official ROCm dev image for building (has LLVM compiler + all dev tools)
-ARG BUILD_IMAGE=rocm/dev-ubuntu-22.04:6.2
+ARG BUILD_IMAGE=rocm/dev-ubuntu-22.04:7.1.1
 # Use same ROCm image for runtime to ensure library compatibility
-ARG RUNTIME_IMAGE=rocm/dev-ubuntu-22.04:6.2
+ARG RUNTIME_IMAGE=rocm/dev-ubuntu-22.04:7.1.1
 
 FROM ${BUILD_IMAGE} AS builder
 
@@ -131,6 +131,6 @@ CMD ["./main", "--help"]
 
 # Labels
 LABEL maintainer="PowerInfer ROCm Build" \
-      description="PowerInfer with ROCm support for AMD Strix Halo (gfx1151)" \
+      description="PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)" \
       rocm.version="7.1.1" \
       gpu.target="gfx1151"
