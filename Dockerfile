@@ -204,17 +204,20 @@ WRAPPER_EOF
 # 1. Copy the wrapper header to the source directory
 # 2. Create a Python script to apply the patches (more reliable than sed for multi-line)
 # 3. Modify the macro definitions to use our wrappers when HIPBLAS_V2 is defined
-RUN cd /build/powerinfer && \
-    cp /tmp/rocm7_hipblas_fix.h /build/powerinfer/rocm7_hipblas_fix.h && \
-    if grep -q "rocm7_hipblas_fix.h" ggml-cuda.cu; then \
-        echo "ROCm 7.x compatibility fix already present, skipping"; \
-    else \
-        echo "Applying ROCm 7.x hipBLAS API compatibility fix..." && \
-        python3 << 'PYEOF'
-import re
+
+# First, create the Python patch script
+RUN cat > /tmp/apply_rocm7_patch.py << 'PYEOF'
+import sys
 
 with open('ggml-cuda.cu', 'r') as f:
     content = f.read()
+
+# Check if already patched
+if 'rocm7_hipblas_fix.h' in content:
+    print("ROCm 7.x compatibility fix already present, skipping")
+    sys.exit(0)
+
+print("Applying ROCm 7.x hipBLAS API compatibility fix...")
 
 # 1. Add include for rocm7_hipblas_fix.h after #if defined(GGML_USE_HIPBLAS)
 include_patch = '''#if defined(GGML_USE_HIPBLAS)
@@ -256,8 +259,11 @@ with open('ggml-cuda.cu', 'w') as f:
 
 print("Patches applied successfully")
 PYEOF
-        echo "Fix applied successfully"; \
-    fi && \
+
+# Now apply the patch
+RUN cd /build/powerinfer && \
+    cp /tmp/rocm7_hipblas_fix.h /build/powerinfer/rocm7_hipblas_fix.h && \
+    python3 /tmp/apply_rocm7_patch.py && \
     echo "=== Verifying fix was applied ===" && \
     grep -n "rocm7_hipblas_fix\|HIPBLAS_V2\|ggml_hipblas" ggml-cuda.cu | head -30
 
