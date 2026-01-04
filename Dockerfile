@@ -105,25 +105,23 @@ RUN cat > /tmp/rocm7_hipblas_fix.patch << 'PATCH_EOF'
 PATCH_EOF
 
 # Apply the patch (allow fuzzy matching for line number differences)
+# Use -F0 to disable fuzz factor for cleaner patching
 RUN cd /build/powerinfer && \
-    if patch -p1 --dry-run < /tmp/rocm7_hipblas_fix.patch 2>/dev/null; then \
-        patch -p1 < /tmp/rocm7_hipblas_fix.patch; \
+    if patch -p1 -F0 --dry-run < /tmp/rocm7_hipblas_fix.patch 2>/dev/null; then \
+        patch -p1 -F0 < /tmp/rocm7_hipblas_fix.patch && \
         echo "Patch applied successfully"; \
     else \
-        echo "Patch failed to apply cleanly, attempting manual fix..."; \
-        # Manual sed-based fix as fallback
-        sed -i '/#define CUDA_R_32F HIPBLAS_R_32F/a \
-\
-// ROCm 7.x API compatibility: hipblasGemmEx now uses hipblasComputeType_t\
-#if defined(__HIP_PLATFORM_AMD__)\
-#define CUBLAS_COMPUTE_16F HIPBLAS_COMPUTE_16F\
-#define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F\
-#define CUBLAS_COMPUTE_32F_FAST_16F HIPBLAS_COMPUTE_32F_FAST_16F\
-#endif' ggml-cuda.cu; \
-        echo "Manual fix applied"; \
+        echo "Patch failed to apply cleanly, attempting manual insertion..."; \
+        if grep -q "CUBLAS_COMPUTE_16F" ggml-cuda.cu; then \
+            echo "Fix already present, skipping"; \
+        else \
+            awk '/#define CUDA_R_32F HIPBLAS_R_32F/{print; print ""; print "// ROCm 7.x API compatibility: hipblasGemmEx now uses hipblasComputeType_t"; print "// instead of hipDataType for the compute_type parameter"; print "#if defined(__HIP_PLATFORM_AMD__) && defined(HIPBLAS_V2)"; print "// ROCm 7.x with HIPBLAS_V2: use hipblasComputeType_t"; print "#define CUBLAS_COMPUTE_16F HIPBLAS_COMPUTE_16F"; print "#define CUBLAS_COMPUTE_32F HIPBLAS_COMPUTE_32F"; print "#define CUBLAS_COMPUTE_32F_FAST_16F HIPBLAS_COMPUTE_32F_FAST_16F"; print "#else"; print "// ROCm 6.x or earlier: use hipDataType (mapped from CUDA types)"; print "#define CUBLAS_COMPUTE_16F CUDA_R_16F"; print "#define CUBLAS_COMPUTE_32F CUDA_R_32F"; print "#define CUBLAS_COMPUTE_32F_FAST_16F CUDA_R_32F"; print "#endif"; next}1' ggml-cuda.cu > ggml-cuda.cu.tmp && \
+            mv ggml-cuda.cu.tmp ggml-cuda.cu && \
+            echo "Manual fix applied via awk"; \
+        fi; \
     fi && \
     echo "=== Verifying fix was applied ===" && \
-    grep -A5 "CUDA_R_32F" ggml-cuda.cu | head -20
+    grep -A15 "CUDA_R_32F" ggml-cuda.cu | head -25
 
 # Verify HIP is available before building
 RUN hipcc --version && echo "HIP compiler found"
