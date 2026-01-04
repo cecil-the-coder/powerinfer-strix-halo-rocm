@@ -315,7 +315,10 @@ RUN set -e && \
     cp -aL /opt/rocm/lib/libhsa-runtime64.so* /staging/lib/rocm/ && \
     cp -aL /opt/rocm/lib/libamd_comgr.so* /staging/lib/rocm/ && \
     (cp -aL /opt/rocm/lib/libhipblaslt.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/librocroller.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/libhiprtc.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/libhiprtc-builtins.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/libaqlprofile64.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/librocsolver.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/librocsparse.so* /staging/lib/rocm/ 2>/dev/null || true) && \
     (cp -aL /opt/rocm/lib/librocprim.so* /staging/lib/rocm/ 2>/dev/null || true) && \
