@@ -154,14 +154,15 @@ static inline hipblasStatus_t ggml_hipblasGemmBatchedEx_rocm7_compat(
     hipDataType computeType,  // Accept hipDataType for compatibility
     hipblasGemmAlgo_t algo)
 {
+    // Cast to match hipBLAS expected types (const void** and void**)
     return ::hipblasGemmBatchedEx(
         handle, transA, transB,
         m, n, k,
         alpha,
-        A, aType, lda,
-        B, bType, ldb,
+        (const void**)A, aType, lda,
+        (const void**)B, bType, ldb,
         beta,
-        C, cType, ldc,
+        (void**)C, cType, ldc,
         batchCount,
         ggml_hipDataTypeToComputeType(computeType),  // Convert to hipblasComputeType_t
         algo);
@@ -288,36 +289,39 @@ RUN cmake -S . -B build \
     && grep -i "hipblas\|hip\|rocm\|gpu\|target\|arch" cmake_config.log || true
 
 # Build PowerInfer - MUST succeed
-RUN cmake --build build --config Release -j$(nproc) 2>&1 | tee build.log \
-    && echo "=== Build completed, verifying binaries ===" \
-    && ls -la build/bin/ \
-    && test -f build/bin/main || (echo "ERROR: Build failed - main binary not found!" && cat build.log && exit 1) \
-    && echo "=== Checking if HIP libraries are linked ===" \
-    && (ldd build/bin/main 2>/dev/null | grep -i hip && echo "HIP libraries linked successfully") || true
+# Use set -e to ensure any failure stops the build
+RUN set -e && \
+    cmake --build build --config Release -j$(nproc) 2>&1 | tee build.log && \
+    echo "=== Build completed, verifying binaries ===" && \
+    ls -la build/bin/ && \
+    if [ ! -f build/bin/main ]; then echo "ERROR: Build failed - main binary not found!" && cat build.log && false; fi && \
+    echo "=== Checking if HIP libraries are linked ===" && \
+    (ldd build/bin/main 2>/dev/null | grep -i hip && echo "HIP libraries linked successfully" || echo "Note: HIP linking check inconclusive")
 
 # Stage artifacts for runtime image - include ROCm libs needed at runtime
 # CRITICAL: Fail build if binaries don't exist
-RUN mkdir -p /staging/bin /staging/lib/rocm /staging/rocblas \
-    && echo "=== Checking for built binaries ===" \
-    && ls -la build/bin/ \
-    && test -f build/bin/main || (echo "ERROR: build/bin/main not found - build failed!" && exit 1) \
-    && cp -r build/bin/* /staging/bin/ \
-    && find build -name "*.so" -exec cp {} /staging/lib/ \; 2>/dev/null || true \
-    && echo "Copying ROCm runtime libraries..." \
-    && cp -aL /opt/rocm/lib/libhipblas.so* /staging/lib/rocm/ \
-    && cp -aL /opt/rocm/lib/librocblas.so* /staging/lib/rocm/ \
-    && cp -aL /opt/rocm/lib/libamdhip64.so* /staging/lib/rocm/ \
-    && cp -aL /opt/rocm/lib/libhsa-runtime64.so* /staging/lib/rocm/ \
-    && cp -aL /opt/rocm/lib/libamd_comgr.so* /staging/lib/rocm/ \
-    && cp -aL /opt/rocm/lib/libhiprtc.so* /staging/lib/rocm/ 2>/dev/null || true \
-    && cp -aL /opt/rocm/lib/librocsolver.so* /staging/lib/rocm/ 2>/dev/null || true \
-    && cp -aL /opt/rocm/lib/librocsparse.so* /staging/lib/rocm/ 2>/dev/null || true \
-    && cp -aL /opt/rocm/lib/librocprim.so* /staging/lib/rocm/ 2>/dev/null || true \
-    && echo "Copying rocBLAS Tensile library (GPU kernels)..." \
-    && cp -r /opt/rocm/lib/rocblas /staging/rocblas/ \
-    && echo "Staged binaries:" && ls -la /staging/bin \
-    && echo "Staged ROCm libs:" && ls -la /staging/lib/rocm/ \
-    && echo "Staged rocBLAS library:" && ls -la /staging/rocblas/
+RUN set -e && \
+    mkdir -p /staging/bin /staging/lib/rocm /staging/rocblas && \
+    echo "=== Checking for built binaries ===" && \
+    ls -la build/bin/ && \
+    if [ ! -f build/bin/main ]; then echo "ERROR: build/bin/main not found - build failed!" && false; fi && \
+    cp -r build/bin/* /staging/bin/ && \
+    find build -name "*.so" -exec cp {} /staging/lib/ \; 2>/dev/null; \
+    echo "Copying ROCm runtime libraries..." && \
+    cp -aL /opt/rocm/lib/libhipblas.so* /staging/lib/rocm/ && \
+    cp -aL /opt/rocm/lib/librocblas.so* /staging/lib/rocm/ && \
+    cp -aL /opt/rocm/lib/libamdhip64.so* /staging/lib/rocm/ && \
+    cp -aL /opt/rocm/lib/libhsa-runtime64.so* /staging/lib/rocm/ && \
+    cp -aL /opt/rocm/lib/libamd_comgr.so* /staging/lib/rocm/ && \
+    (cp -aL /opt/rocm/lib/libhiprtc.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/librocsolver.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/librocsparse.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    (cp -aL /opt/rocm/lib/librocprim.so* /staging/lib/rocm/ 2>/dev/null || true) && \
+    echo "Copying rocBLAS Tensile library (GPU kernels)..." && \
+    cp -r /opt/rocm/lib/rocblas /staging/rocblas/ && \
+    echo "Staged binaries:" && ls -la /staging/bin && \
+    echo "Staged ROCm libs:" && ls -la /staging/lib/rocm/ && \
+    echo "Staged rocBLAS library:" && ls -la /staging/rocblas/
 
 # Runtime stage - smaller image using same ROCm image
 ARG RUNTIME_IMAGE
