@@ -53,7 +53,11 @@ jobs:
           DOCKER_DATA_ROOT='/mnt/var/lib/docker'
           DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
           sudo mkdir -p "${DOCKER_DATA_ROOT}"
-          jq --arg dataroot "${DOCKER_DATA_ROOT}" '. + {"data-root": $dataroot}' "${DOCKER_DAEMON_JSON}" > "/tmp/docker.json.tmp"
+          # Create daemon.json if it doesn't exist
+          if [ ! -f "${DOCKER_DAEMON_JSON}" ]; then
+            echo '{}' | sudo tee "${DOCKER_DAEMON_JSON}" > /dev/null
+          fi
+          jq --arg dataroot "${DOCKER_DATA_ROOT}" '. + {"data-root": $dataroot}' "${DOCKER_DAEMON_JSON}" | sudo tee "/tmp/docker.json.tmp" > /dev/null
           sudo mv "/tmp/docker.json.tmp" "${DOCKER_DAEMON_JSON}"
           sudo systemctl restart docker
 
