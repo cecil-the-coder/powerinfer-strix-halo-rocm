@@ -24,18 +24,7 @@ jobs:
       contents: read
       packages: write
 
-    strategy:
-      matrix:
-        include:
-          - gfx_target: gfx1100
-            tag_prefix: ""
-            description: "Strix Halo with gfx1100 kernels (recommended)"
-          - gfx_target: gfx1151
-            tag_prefix: "gfx1151-"
-            description: "Strix Halo native (experimental)"
-          - gfx_target: gfx1150
-            tag_prefix: "gfx1150-"
-            description: "Strix Point (16 CUs)"
+    # CPU-only build - ROCm disabled due to gfx1151 memory faults
 
     steps:
       # Free disk space - ROCm images are large (~6GB+)
@@ -91,10 +80,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch,prefix=${{ matrix.tag_prefix }}
-            type=ref,event=pr,prefix=${{ matrix.tag_prefix }}
-            type=sha,prefix=${{ matrix.tag_prefix }}
-            type=raw,value=${{ matrix.tag_prefix }}latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -104,7 +93,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
-            org.opencontainers.image.description=PowerInfer with ROCm for ${{ matrix.description }}
-          build-args: |
-            AMDGPU_TARGETS=${{ matrix.gfx_target }}
+            org.opencontainers.image.description=PowerInfer CPU-only (ROCm disabled due to gfx1151 issues)
           no-cache: true
