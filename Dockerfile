@@ -50,42 +50,53 @@ WORKDIR /build/powerinfer
 # ROCm clang may not be available or may not work for general C compilation
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
-# Verify HIP/ROCm is available - check various possible locations
+# Verify HIP/ROCm is available and find compilers
 RUN echo "=== Checking ROCm/HIP installation ===" && \
     ls -la /opt/rocm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/bin found" && \
     ls -la /opt/rocm/llvm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/llvm/bin found" && \
-    (which hipcc && hipcc --version) || \
-    (/opt/rocm/bin/hipcc --version 2>/dev/null) || \
-    (ls /opt/rocm/bin/amdclang* 2>/dev/null && echo "amdclang found") || \
-    echo "Warning: hipcc not found, but continuing build - CMake will locate HIP"
+    echo "=== Looking for compilers ===" && \
+    (which hipcc && hipcc --version) || echo "hipcc not in PATH" && \
+    (ls -la /opt/rocm/bin/hipcc 2>/dev/null) || echo "No /opt/rocm/bin/hipcc" && \
+    (ls -la /opt/rocm/bin/amdclang* 2>/dev/null) || echo "No amdclang in /opt/rocm/bin" && \
+    (ls -la /opt/rocm/llvm/bin/clang* 2>/dev/null | head -5) || echo "No clang in /opt/rocm/llvm/bin"
 
 # Configure with CMake - Enable HIPBLAS for ROCm
-# Let CMake find the compilers automatically - don't hardcode paths that may not exist
+# Use hipcc as C/CXX compiler to ensure AMD-specific flags like -munsafe-fp-atomics work
+# hipcc is the HIP compiler wrapper that handles both C and C++ with proper ROCm flags
+# Enable server build for HTTP API serving
 RUN cmake -S . -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH=/opt/rocm \
+    -DCMAKE_C_COMPILER=/opt/rocm/bin/hipcc \
+    -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hipcc \
     -DLLAMA_HIPBLAS=ON \
+    -DLLAMA_BUILD_SERVER=ON \
     -DCMAKE_HIP_ARCHITECTURES=${AMDGPU_TARGETS} \
     2>&1 | tee cmake_config.log \
     && echo "=== CMake Configuration Summary ===" \
-    && grep -i "hipblas\|hip\|rocm\|gpu\|target\|arch" cmake_config.log || true
+    && grep -i "hipblas\|hip\|rocm\|gpu\|target\|arch\|compiler\|server" cmake_config.log || true
 
 # Build PowerInfer
+# Use pipefail to catch build failures even when piping to tee
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -e && \
     cmake --build build --config Release -j$(nproc) 2>&1 | tee build.log && \
     echo "=== Build completed, verifying binaries ===" && \
     ls -la build/bin/ && \
-    if [ ! -f build/bin/main ]; then echo "ERROR: Build failed!" && cat build.log && false; fi && \
+    echo "=== Available executables ===" && \
+    find build/bin -type f -executable -ls && \
+    if [ ! -f build/bin/main ]; then echo "ERROR: main binary not found!" && cat build.log && exit 1; fi && \
     echo "=== Checking HIP libraries ===" && \
     ldd build/bin/main 2>/dev/null | grep -i hip || echo "Note: HIP check inconclusive"
 
-# Stage artifacts
+# Stage artifacts - copy all binaries and shared libraries
 RUN set -e && \
     mkdir -p /staging/bin /staging/lib && \
-    cp -r build/bin/* /staging/bin/ && \
-    find build -name "*.so" -exec cp {} /staging/lib/ \; 2>/dev/null || true && \
-    echo "Staged binaries:" && ls -la /staging/bin
+    cp -v build/bin/* /staging/bin/ 2>/dev/null || true && \
+    find build -name "*.so" -exec cp -v {} /staging/lib/ \; 2>/dev/null || true && \
+    echo "=== Staged binaries ===" && ls -la /staging/bin && \
+    echo "=== Staged libraries ===" && ls -la /staging/lib
 
 # Runtime stage
 ARG RUNTIME_IMAGE
