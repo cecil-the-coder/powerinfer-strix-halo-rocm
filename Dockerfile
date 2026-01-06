@@ -21,22 +21,23 @@ ENV ROCM_PATH=/opt/rocm \
     GPU_TARGETS=${AMDGPU_TARGETS} \
     LLAMA_HIP_UMA=ON \
     ROCBLAS_USE_HIPBLASLT=1 \
-    CC=/opt/rocm/llvm/bin/clang \
-    CXX=/opt/rocm/llvm/bin/clang++ \
-    HIPCXX=/opt/rocm/llvm/bin/clang++ \
     CMAKE_PREFIX_PATH=/opt/rocm \
-    PATH="/opt/rocm/bin:/opt/rocm/llvm/bin:${PATH}"
+    PATH="/opt/rocm/bin:/opt/rocm/llvm/bin:/usr/bin:/bin:${PATH}"
 
 WORKDIR /build
 
 # Install build dependencies
 # Base image is Fedora-based (ROCm uses Fedora/RHEL), so use dnf
+# Include gcc/clang as fallback compilers for Python packages that need to compile C extensions
 RUN dnf install -y \
     git \
     cmake \
     ninja-build \
     python3 \
     python3-pip \
+    python3-devel \
+    gcc \
+    gcc-c++ \
     && dnf clean all
 
 # Clone PowerInfer
@@ -45,18 +46,25 @@ RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} powerin
 WORKDIR /build/powerinfer
 
 # Install Python dependencies
+# Unset CC/CXX to use system gcc for Python C extension builds (like cvxopt)
+# ROCm clang may not be available or may not work for general C compilation
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
-# Verify HIP is available
-RUN hipcc --version && echo "HIP compiler found"
+# Verify HIP/ROCm is available - check various possible locations
+RUN echo "=== Checking ROCm/HIP installation ===" && \
+    ls -la /opt/rocm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/bin found" && \
+    ls -la /opt/rocm/llvm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/llvm/bin found" && \
+    (which hipcc && hipcc --version) || \
+    (/opt/rocm/bin/hipcc --version 2>/dev/null) || \
+    (ls /opt/rocm/bin/amdclang* 2>/dev/null && echo "amdclang found") || \
+    echo "Warning: hipcc not found, but continuing build - CMake will locate HIP"
 
 # Configure with CMake - Enable HIPBLAS for ROCm
+# Let CMake find the compilers automatically - don't hardcode paths that may not exist
 RUN cmake -S . -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_PREFIX_PATH=/opt/rocm \
-    -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang \
-    -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/clang++ \
     -DLLAMA_HIPBLAS=ON \
     -DCMAKE_HIP_ARCHITECTURES=${AMDGPU_TARGETS} \
     2>&1 | tee cmake_config.log \
