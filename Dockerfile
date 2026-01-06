@@ -1,4 +1,4 @@
-# PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
+# PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)
 # Based on kyuz0/amd-strix-halo-toolboxes approach
 #
 # Build: docker build -t powerinfer-rocm:latest .
@@ -7,12 +7,12 @@
 # Build stage - Fedora with ROCm from repo
 FROM registry.fedoraproject.org/fedora:43 AS builder
 
-# ROCm 6.4.4 repo
+# ROCm 7.1.1 repo
 RUN <<'EOF'
 tee /etc/yum.repos.d/rocm.repo <<REPO
-[ROCm-6.4.4]
-name=ROCm6.4.4
-baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
+[ROCm-7.1.1]
+name=ROCm7.1.1
+baseurl=https://repo.radeon.com/rocm/el9/7.1.1/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -58,9 +58,14 @@ RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Build PowerInfer with HIP support
 # PowerInfer uses older llama.cpp API (LLAMA_HIPBLAS vs GGML_HIP)
-RUN cmake -S . -B build \
+# Must explicitly set CC/CXX to ROCm compilers to handle HIP-specific flags
+RUN CC=/opt/rocm/llvm/bin/amdclang \
+    CXX=/opt/rocm/llvm/bin/amdclang++ \
+    cmake -S . -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/amdclang \
+    -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/amdclang++ \
     -DLLAMA_HIPBLAS=ON \
     -DAMDGPU_TARGETS=gfx1151 \
     -DLLAMA_HIP_UMA=ON \
@@ -82,12 +87,12 @@ RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ 
 # Runtime stage - minimal Fedora with ROCm runtime
 FROM registry.fedoraproject.org/fedora-minimal:43
 
-# ROCm 6.4.4 repo
+# ROCm 7.1.1 repo
 RUN <<'EOF'
 tee /etc/yum.repos.d/rocm.repo <<REPO
-[ROCm-6.4.4]
-name=ROCm6.4.4
-baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
+[ROCm-7.1.1]
+name=ROCm7.1.1
+baseurl=https://repo.radeon.com/rocm/el9/7.1.1/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -134,6 +139,6 @@ CMD ["./main", "--help"]
 
 # Labels
 LABEL maintainer="PowerInfer ROCm Build" \
-      description="PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)" \
-      rocm.version="6.4.4" \
+      description="PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)" \
+      rocm.version="7.1.1" \
       gpu.target="gfx1151"
