@@ -24,8 +24,6 @@ jobs:
       contents: read
       packages: write
 
-    # CPU-only build - ROCm disabled due to gfx1151 memory faults
-
     steps:
       # Free disk space - ROCm images are large (~6GB+)
       - name: Free Disk Space
@@ -45,7 +43,6 @@ jobs:
           DOCKER_DATA_ROOT='/mnt/var/lib/docker'
           DOCKER_DAEMON_JSON='/etc/docker/daemon.json'
           sudo mkdir -p "${DOCKER_DATA_ROOT}"
-          # Create daemon.json if it doesn't exist
           if [ ! -f "${DOCKER_DAEMON_JSON}" ]; then
             echo '{}' | sudo tee "${DOCKER_DAEMON_JSON}" > /dev/null
           fi
@@ -93,5 +90,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
-            org.opencontainers.image.description=PowerInfer CPU-only (ROCm disabled due to gfx1151 issues)
+            org.opencontainers.image.description=PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
           no-cache: true

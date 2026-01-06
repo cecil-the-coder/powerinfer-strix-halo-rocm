@@ -1,5 +1,5 @@
-# PowerInfer CPU-only (ROCm disabled due to gfx1151 memory faults)
-# TODO: Re-enable GPU when ROCm properly supports Strix Halo
+# PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
+# Using working configuration from eh-ops-repo
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -36,27 +36,56 @@ spec:
             - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
             - --ctx-size
             - "4096"
-            - --threads
-            - "32"
+            - --n-gpu-layers
+            - "-1"
             - --host
             - "0.0.0.0"
             - --port
             - "8080"
+          env:
+            # ROCm 6.4.4 configuration matching eh-ops-repo working setup
+            - name: ROCM_PATH
+              value: /opt/rocm
+            - name: HIP_PATH
+              value: /opt/rocm
+            - name: HSA_OVERRIDE_GFX_VERSION
+              value: "11.5.1"
+            - name: ROCBLAS_USE_HIPBLASLT
+              value: "1"
+            - name: LLAMA_HIP_UMA
+              value: "ON"
           ports:
             - containerPort: 8080
               name: http
           volumeMounts:
             - name: models
               mountPath: /models
+            - name: dev-kfd
+              mountPath: /dev/kfd
+            - name: dev-dri
+              mountPath: /dev/dri
+          securityContext:
+            capabilities:
+              add:
+                - SYS_PTRACE
+            seccompProfile:
+              type: Unconfined
           resources:
             limits:
-              memory: 64Gi
+              memory: 80Gi
             requests:
+              cpu: "4"
               memory: 16Gi
       volumes:
         - name: models
           persistentVolumeClaim:
             claimName: llama-models
+        - name: dev-kfd
+          hostPath:
+            path: /dev/kfd
+        - name: dev-dri
+          hostPath:
+            path: /dev/dri
 ---
 apiVersion: v1
 kind: Service
