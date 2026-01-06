@@ -42,7 +42,7 @@ ENV ROCM_PATH=/opt/rocm \
     ROCBLAS_USE_HIPBLASLT=1 \
     PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
 
-# Build rocWMMA for gfx1151 support
+# Build rocWMMA for gfx1100 (using proven RX 7900 kernels)
 WORKDIR /opt
 COPY build-rocwmma.sh .
 RUN chmod +x build-rocwmma.sh && ./build-rocwmma.sh
@@ -68,7 +68,7 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
     -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/amdclang \
     -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/amdclang++ \
     -DLLAMA_HIPBLAS=ON \
-    -DAMDGPU_TARGETS=gfx1151 \
+    -DAMDGPU_TARGETS=gfx1100 \
     -DLLAMA_HIP_UMA=ON \
     -DROCM_PATH=/opt/rocm \
     -DHIP_PATH=/opt/rocm \

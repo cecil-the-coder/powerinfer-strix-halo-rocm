@@ -27,7 +27,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:latest
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-5884595
           imagePullPolicy: Always
           command:
             - /app/server
@@ -43,17 +43,25 @@ spec:
             - --port
             - "8080"
           env:
-            # ROCm 6.4.4 configuration matching eh-ops-repo working setup
+            # ROCm 6.4.4 configuration for AMD Strix Halo (gfx1151)
             - name: ROCM_PATH
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
+            # Use gfx1100 (11.0.0) kernels on gfx1151 hardware - more stable
             - name: HSA_OVERRIDE_GFX_VERSION
-              value: "11.5.1"
+              value: "11.0.0"
             - name: ROCBLAS_USE_HIPBLASLT
               value: "1"
             - name: LLAMA_HIP_UMA
               value: "ON"
+            # Workarounds for gfx1151 memory access issues
+            - name: HSA_ENABLE_SDMA
+              value: "0"
+            - name: GPU_MAX_HW_QUEUES
+              value: "1"
+            - name: HIP_VISIBLE_DEVICES
+              value: "0"
           ports:
             - containerPort: 8080
               name: http
@@ -65,11 +73,7 @@ spec:
             - name: dev-dri
               mountPath: /dev/dri
           securityContext:
-            capabilities:
-              add:
-                - SYS_PTRACE
-            seccompProfile:
-              type: Unconfined
+            privileged: true
           resources:
             limits:
               memory: 80Gi
