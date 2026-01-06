@@ -25,19 +25,19 @@ ENV ROCM_PATH=/opt/rocm \
     CXX=/opt/rocm/llvm/bin/clang++ \
     HIPCXX=/opt/rocm/llvm/bin/clang++ \
     CMAKE_PREFIX_PATH=/opt/rocm \
-    PATH="/opt/rocm/bin:/opt/rocm/llvm/bin:${PATH}" \
-    DEBIAN_FRONTEND=noninteractive
+    PATH="/opt/rocm/bin:/opt/rocm/llvm/bin:${PATH}"
 
 WORKDIR /build
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Base image is Fedora-based (ROCm uses Fedora/RHEL), so use dnf
+RUN dnf install -y \
     git \
     cmake \
     ninja-build \
     python3 \
     python3-pip \
-    && rm -rf /var/lib/apt/lists/*
+    && dnf clean all
 
 # Clone PowerInfer
 RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} powerinfer
