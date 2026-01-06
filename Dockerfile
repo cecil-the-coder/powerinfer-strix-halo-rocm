@@ -1,5 +1,6 @@
-# PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)
+# PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
 # Based on kyuz0/amd-strix-halo-toolboxes approach
+# Note: ROCm 7.x has breaking hipBLAS API changes incompatible with PowerInfer
 #
 # Build: docker build -t powerinfer-rocm:latest .
 # Run:   docker run --device=/dev/kfd --device=/dev/dri -v /models:/models powerinfer-rocm:latest
@@ -7,12 +8,12 @@
 # Build stage - Fedora with ROCm from repo
 FROM registry.fedoraproject.org/fedora:43 AS builder
 
-# ROCm 7.1.1 repo
+# ROCm 6.4.4 repo (newest version compatible with PowerInfer's hipBLAS API)
 RUN <<'EOF'
 tee /etc/yum.repos.d/rocm.repo <<REPO
-[ROCm-7.1.1]
-name=ROCm7.1.1
-baseurl=https://repo.radeon.com/rocm/el9/7.1.1/main
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -87,12 +88,12 @@ RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ 
 # Runtime stage - minimal Fedora with ROCm runtime
 FROM registry.fedoraproject.org/fedora-minimal:43
 
-# ROCm 7.1.1 repo
+# ROCm 6.4.4 repo
 RUN <<'EOF'
 tee /etc/yum.repos.d/rocm.repo <<REPO
-[ROCm-7.1.1]
-name=ROCm7.1.1
-baseurl=https://repo.radeon.com/rocm/el9/7.1.1/main
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -139,6 +140,6 @@ CMD ["./main", "--help"]
 
 # Labels
 LABEL maintainer="PowerInfer ROCm Build" \
-      description="PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)" \
-      rocm.version="7.1.1" \
+      description="PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)" \
+      rocm.version="6.4.4" \
       gpu.target="gfx1151"
