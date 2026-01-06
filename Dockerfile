@@ -4,7 +4,9 @@
 # Build: docker build -t powerinfer-rocm:latest .
 # Run:   docker run --device=/dev/kfd --device=/dev/dri -v /models:/models powerinfer-rocm:latest
 
-ARG BUILD_IMAGE=docker.io/kyuz0/amd-strix-halo-toolboxes:rocm-6.4.4-rocwmma
+# Build with official ROCm dev image (has hipcc compiler)
+# Runtime with kyuz0 toolbox (lightweight, has rocWMMA support for gfx1151)
+ARG BUILD_IMAGE=docker.io/rocm/dev-ubuntu-22.04:6.4
 ARG RUNTIME_IMAGE=docker.io/kyuz0/amd-strix-halo-toolboxes:rocm-6.4.4-rocwmma
 
 FROM ${BUILD_IMAGE} AS builder
@@ -27,27 +29,22 @@ ENV ROCM_PATH=/opt/rocm \
 WORKDIR /build
 
 # Install build dependencies
-# Base image is Fedora-based (ROCm uses Fedora/RHEL), so use dnf
-# Include gcc/clang as fallback compilers for Python packages that need to compile C extensions
-RUN dnf install -y \
+# ROCm dev image is Ubuntu-based, so use apt-get
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     cmake \
     ninja-build \
     python3 \
     python3-pip \
-    python3-devel \
-    gcc \
-    gcc-c++ \
-    && dnf clean all
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Clone PowerInfer
 RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} powerinfer
 
 WORKDIR /build/powerinfer
 
-# Install Python dependencies
-# Unset CC/CXX to use system gcc for Python C extension builds (like cvxopt)
-# ROCm clang may not be available or may not work for general C compilation
+# Install Python dependencies (optional, failures are ok)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Verify HIP/ROCm is available and find compilers
