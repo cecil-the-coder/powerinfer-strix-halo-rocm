@@ -1,120 +1,128 @@
-# PowerInfer with ROCm for AMD Strix Halo (gfx1151)
-# Uses custom Strix Halo toolbox image with rocWMMA support
+# PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
+# Based on kyuz0/amd-strix-halo-toolboxes approach
 #
 # Build: docker build -t powerinfer-rocm:latest .
 # Run:   docker run --device=/dev/kfd --device=/dev/dri -v /models:/models powerinfer-rocm:latest
 
-# Build with official ROCm dev image (has hipcc compiler)
-# Runtime with kyuz0 toolbox (lightweight, has rocWMMA support for gfx1151)
-ARG BUILD_IMAGE=docker.io/rocm/dev-ubuntu-22.04:6.4
-ARG RUNTIME_IMAGE=docker.io/kyuz0/amd-strix-halo-toolboxes:rocm-6.4.4-rocwmma
+# Build stage - Fedora with ROCm from repo
+FROM registry.fedoraproject.org/fedora:43 AS builder
 
-FROM ${BUILD_IMAGE} AS builder
+# ROCm 6.4.4 repo
+RUN <<'EOF'
+tee /etc/yum.repos.d/rocm.repo <<REPO
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
+enabled=1
+priority=50
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
+EOF
 
-ARG POWERINFER_REPO=https://github.com/SJTU-IPADS/PowerInfer.git
-ARG POWERINFER_BRANCH=main
-ARG AMDGPU_TARGETS=gfx1151
+# Build dependencies - including ROCm compilers and HIP
+RUN dnf -y --nodocs --setopt=install_weak_deps=False \
+    --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
+    install \
+    make gcc cmake lld clang clang-devel compiler-rt libcurl-devel ninja-build \
+    rocm-llvm rocm-device-libs hip-runtime-amd hip-devel \
+    rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
+    rocminfo \
+    git-core python3 python3-pip python3-devel \
+    && dnf clean all && rm -rf /var/cache/dnf/*
 
-# Environment for ROCm build
+# ROCm environment
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
+    HIP_CLANG_PATH=/opt/rocm/llvm/bin \
+    HIP_DEVICE_LIB_PATH=/opt/rocm/amdgcn/bitcode \
     HSA_OVERRIDE_GFX_VERSION=11.5.1 \
-    AMDGPU_TARGETS=${AMDGPU_TARGETS} \
-    GPU_TARGETS=${AMDGPU_TARGETS} \
     LLAMA_HIP_UMA=ON \
     ROCBLAS_USE_HIPBLASLT=1 \
-    CMAKE_PREFIX_PATH=/opt/rocm \
-    PATH="/opt/rocm/bin:/opt/rocm/llvm/bin:/usr/bin:/bin:${PATH}"
+    PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
 
-WORKDIR /build
-
-# Install build dependencies
-# ROCm dev image is Ubuntu-based, so use apt-get
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    cmake \
-    ninja-build \
-    python3 \
-    python3-pip \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Build rocWMMA for gfx1151 support
+WORKDIR /opt
+COPY build-rocwmma.sh .
+RUN chmod +x build-rocwmma.sh && ./build-rocwmma.sh
 
 # Clone PowerInfer
-RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} powerinfer
+ARG POWERINFER_REPO=https://github.com/SJTU-IPADS/PowerInfer.git
+ARG POWERINFER_BRANCH=main
 
-WORKDIR /build/powerinfer
+WORKDIR /opt/powerinfer
+RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} .
 
-# Install Python dependencies (optional, failures are ok)
+# Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
-# Verify HIP/ROCm is available and find compilers
-RUN echo "=== Checking ROCm/HIP installation ===" && \
-    ls -la /opt/rocm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/bin found" && \
-    ls -la /opt/rocm/llvm/bin/ 2>/dev/null | head -20 || echo "No /opt/rocm/llvm/bin found" && \
-    echo "=== Looking for compilers ===" && \
-    (which hipcc && hipcc --version) || echo "hipcc not in PATH" && \
-    (ls -la /opt/rocm/bin/hipcc 2>/dev/null) || echo "No /opt/rocm/bin/hipcc" && \
-    (ls -la /opt/rocm/bin/amdclang* 2>/dev/null) || echo "No amdclang in /opt/rocm/bin" && \
-    (ls -la /opt/rocm/llvm/bin/clang* 2>/dev/null | head -5) || echo "No clang in /opt/rocm/llvm/bin"
-
-# Configure with CMake - Enable HIPBLAS for ROCm
-# Use hipcc as C/CXX compiler to ensure AMD-specific flags like -munsafe-fp-atomics work
-# hipcc is the HIP compiler wrapper that handles both C and C++ with proper ROCm flags
-# Enable server build for HTTP API serving
+# Build PowerInfer with HIP support
+# PowerInfer uses older llama.cpp API (LLAMA_HIPBLAS vs GGML_HIP)
 RUN cmake -S . -B build \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_PREFIX_PATH=/opt/rocm \
-    -DCMAKE_C_COMPILER=/opt/rocm/bin/hipcc \
-    -DCMAKE_CXX_COMPILER=/opt/rocm/bin/hipcc \
     -DLLAMA_HIPBLAS=ON \
-    -DLLAMA_BUILD_SERVER=ON \
-    -DCMAKE_HIP_ARCHITECTURES=${AMDGPU_TARGETS} \
-    2>&1 | tee cmake_config.log \
-    && echo "=== CMake Configuration Summary ===" \
-    && grep -i "hipblas\|hip\|rocm\|gpu\|target\|arch\|compiler\|server" cmake_config.log || true
+    -DAMDGPU_TARGETS=gfx1151 \
+    -DLLAMA_HIP_UMA=ON \
+    -DROCM_PATH=/opt/rocm \
+    -DHIP_PATH=/opt/rocm \
+    -DHIP_PLATFORM=amd \
+    -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm" \
+    && cmake --build build --config Release -- -j$(nproc)
 
-# Build PowerInfer
-# Use pipefail to catch build failures even when piping to tee
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN set -e && \
-    cmake --build build --config Release -j$(nproc) 2>&1 | tee build.log && \
-    echo "=== Build completed, verifying binaries ===" && \
+# Verify build
+RUN echo "=== Built binaries ===" && \
     ls -la build/bin/ && \
-    echo "=== Available executables ===" && \
-    find build/bin -type f -executable -ls && \
-    if [ ! -f build/bin/main ]; then echo "ERROR: main binary not found!" && cat build.log && exit 1; fi && \
-    echo "=== Checking HIP libraries ===" && \
-    ldd build/bin/main 2>/dev/null | grep -i hip || echo "Note: HIP check inconclusive"
+    if [ ! -f build/bin/main ]; then echo "ERROR: main not found" && exit 1; fi
 
-# Stage artifacts - copy all binaries and shared libraries
-RUN set -e && \
-    mkdir -p /staging/bin /staging/lib && \
-    cp -v build/bin/* /staging/bin/ 2>/dev/null || true && \
-    find build -name "*.so" -exec cp -v {} /staging/lib/ \; 2>/dev/null || true && \
-    echo "=== Staged binaries ===" && ls -la /staging/bin && \
-    echo "=== Staged libraries ===" && ls -la /staging/lib
+# Copy libs
+RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; && ldconfig
 
-# Runtime stage
-ARG RUNTIME_IMAGE
-FROM ${RUNTIME_IMAGE} AS runtime
 
-ARG AMDGPU_TARGETS=gfx1151
+# Runtime stage - minimal Fedora with ROCm runtime
+FROM registry.fedoraproject.org/fedora-minimal:43
 
-# Runtime environment - matching eh-ops-repo working config
+# ROCm 6.4.4 repo
+RUN <<'EOF'
+tee /etc/yum.repos.d/rocm.repo <<REPO
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
+enabled=1
+priority=50
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+REPO
+EOF
+
+# Runtime dependencies only
+RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
+    --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
+    install \
+    bash ca-certificates libatomic libstdc++ libgcc libgomp \
+    hip-runtime-amd rocblas hipblas \
+    rocminfo \
+    && microdnf clean all && rm -rf /var/cache/dnf/*
+
+# Copy binaries and libraries from builder
+COPY --from=builder /opt/powerinfer/build/bin/ /app/
+COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
+COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
+
+# Library paths
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf \
+    && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+    && echo "/app" >> /etc/ld.so.conf.d/local.conf \
+    && ldconfig
+
+# Runtime environment
 ENV ROCM_PATH=/opt/rocm \
     HIP_PATH=/opt/rocm \
     HSA_OVERRIDE_GFX_VERSION=11.5.1 \
-    AMDGPU_TARGETS=${AMDGPU_TARGETS} \
-    GPU_TARGETS=${AMDGPU_TARGETS} \
     LLAMA_HIP_UMA=ON \
     ROCBLAS_USE_HIPBLASLT=1 \
     PATH="/opt/rocm/bin:/app:${PATH}" \
-    LD_LIBRARY_PATH="/opt/rocm/lib:/app"
-
-# Copy binaries
-COPY --from=builder /staging/bin/ /app/
-COPY --from=builder /staging/lib/ /app/
+    LD_LIBRARY_PATH="/opt/rocm/lib:/app:/usr/lib64"
 
 WORKDIR /app
 
