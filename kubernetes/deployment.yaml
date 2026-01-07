@@ -36,7 +36,7 @@ spec:
             - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
             - --ctx-size
             - "4096"
-            # GPU layers for testing patched gfx1151 support
+            # GPU layers for testing with amdgpu.mes=0 kernel param
             - --n-gpu-layers
             - "35"
             - --host
@@ -49,9 +49,9 @@ spec:
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
-            # Native gfx1151 support with patched warp masks
+            # Use gfx1100 kernels on gfx1151 - more stable with kernel 6.18
             - name: HSA_OVERRIDE_GFX_VERSION
-              value: "11.5.1"
+              value: "11.0.0"
             - name: ROCBLAS_USE_HIPBLASLT
               value: "1"
             - name: LLAMA_HIP_UMA
