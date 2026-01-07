@@ -27,7 +27,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-e0f9ae8
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-0bf745d
           imagePullPolicy: Always
           command:
             - /app/server
