@@ -5,11 +5,15 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'build-rocwmma.sh'
+      - 'patches/**'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'build-rocwmma.sh'
+      - 'patches/**'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
 
