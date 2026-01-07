@@ -42,7 +42,7 @@ ENV ROCM_PATH=/opt/rocm \
     ROCBLAS_USE_HIPBLASLT=1 \
     PATH=/opt/rocm/bin:/opt/rocm/llvm/bin:$PATH
 
-# Build rocWMMA for gfx1100 (using proven RX 7900 kernels)
+# Build rocWMMA for gfx1151 (native Strix Halo support)
 WORKDIR /opt
 COPY build-rocwmma.sh .
 RUN chmod +x build-rocwmma.sh && ./build-rocwmma.sh
@@ -54,12 +54,18 @@ ARG POWERINFER_BRANCH=main
 WORKDIR /opt/powerinfer
 RUN git clone --depth 1 --branch ${POWERINFER_BRANCH} ${POWERINFER_REPO} .
 
+# Apply gfx1151 (Strix Halo) compatibility patches
+# These fix warp mask type issues that cause memory access faults on gfx1151
+COPY patches/ /opt/patches/
+RUN chmod +x /opt/patches/apply-gfx1151-fix.sh && \
+    /opt/patches/apply-gfx1151-fix.sh /opt/powerinfer
+
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
-# Build PowerInfer with HIP support
-# PowerInfer uses older llama.cpp API (LLAMA_HIPBLAS vs GGML_HIP)
+# Build PowerInfer with HIP support for gfx1151
 # Must explicitly set CC/CXX to ROCm compilers to handle HIP-specific flags
+# Include hip_shfl_fix.h for proper warp shuffle compatibility
 RUN CC=/opt/rocm/llvm/bin/amdclang \
     CXX=/opt/rocm/llvm/bin/amdclang++ \
     cmake -S . -B build \
@@ -68,12 +74,12 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
     -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/amdclang \
     -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/amdclang++ \
     -DLLAMA_HIPBLAS=ON \
-    -DAMDGPU_TARGETS=gfx1100 \
+    -DAMDGPU_TARGETS=gfx1151 \
     -DLLAMA_HIP_UMA=ON \
     -DROCM_PATH=/opt/rocm \
     -DHIP_PATH=/opt/rocm \
     -DHIP_PLATFORM=amd \
-    -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm" \
+    -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -include /opt/patches/hip_shfl_fix.h" \
     && cmake --build build --config Release -- -j$(nproc)
 
 # Verify build

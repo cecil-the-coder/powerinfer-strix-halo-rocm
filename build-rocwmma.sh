@@ -1,4 +1,7 @@
+#!/bin/bash
+# Build rocWMMA for gfx1151 (Strix Halo) support
 # Source: https://github.com/lhl/strix-halo-testing/blob/main/llm-bench/build-rocwmma.sh
+set -euo pipefail
 git clone https://github.com/ROCm/rocWMMA
 cd rocWMMA
 
@@ -49,7 +52,7 @@ cmake -B build -S . -G Ninja \
   -DCMAKE_INSTALL_PREFIX=$ROCM_PATH \
   -DROCWMMA_BUILD_TESTS=OFF \
   -DROCWMMA_BUILD_SAMPLES=OFF \
-  -DGPU_TARGETS="gfx1100" \
+  -DGPU_TARGETS="gfx1151" \
   -DOpenMP_CXX_FLAGS="-fopenmp=libomp" \
   -DOpenMP_C_FLAGS="-fopenmp=libomp" \
   -DOpenMP_omp_LIBRARY="/usr/lib64/libomp.so" \

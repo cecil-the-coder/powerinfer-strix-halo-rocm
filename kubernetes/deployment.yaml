@@ -27,7 +27,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-5884595
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-77d8388
           imagePullPolicy: Always
           command:
             - /app/server
@@ -36,8 +36,9 @@ spec:
             - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
             - --ctx-size
             - "4096"
+            # GPU layers for testing patched gfx1151 support
             - --n-gpu-layers
-            - "-1"
+            - "35"
             - --host
             - "0.0.0.0"
             - --port
@@ -48,20 +49,18 @@ spec:
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
-            # Use gfx1100 (11.0.0) kernels on gfx1151 hardware - more stable
+            # Native gfx1151 support with patched warp masks
             - name: HSA_OVERRIDE_GFX_VERSION
-              value: "11.0.0"
+              value: "11.5.1"
             - name: ROCBLAS_USE_HIPBLASLT
               value: "1"
             - name: LLAMA_HIP_UMA
               value: "ON"
-            # Workarounds for gfx1151 memory access issues
+            # Workarounds for gfx1151 stability
             - name: HSA_ENABLE_SDMA
               value: "0"
             - name: GPU_MAX_HW_QUEUES
               value: "1"
-            - name: HIP_VISIBLE_DEVICES
-              value: "0"
           ports:
             - containerPort: 8080
               name: http
