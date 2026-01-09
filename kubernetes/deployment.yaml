@@ -1,5 +1,5 @@
-# PowerInfer with ROCm 7.1.1 for AMD Strix Halo (gfx1151)
-# Testing on CachyOS with working ROCm/vulkan
+# PowerInfer with ROCm 6.4.4 for AMD Strix Halo (gfx1151)
+# Testing on CachyOS with kernel params: amdgpu.cwsr_enable=0 amdgpu.gttsize=131072 ttm.pages_limit=33554432
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -44,14 +44,14 @@ spec:
             - --port
             - "8080"
           env:
-            # ROCm 7.1.1 configuration for AMD Strix Halo (gfx1151)
+            # ROCm 6.4.4 configuration for AMD Strix Halo (gfx1151)
             - name: ROCM_PATH
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
-            # Native gfx1151 support
+            # Use gfx1100 kernels on gfx1151 for stability
             - name: HSA_OVERRIDE_GFX_VERSION
-              value: "11.5.1"
+              value: "11.0.0"
             - name: ROCBLAS_USE_HIPBLASLT
               value: "1"
             - name: LLAMA_HIP_UMA
