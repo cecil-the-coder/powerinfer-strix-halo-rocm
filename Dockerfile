@@ -125,9 +125,13 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
     python3 python3-pip \
     && microdnf clean all && rm -rf /var/cache/dnf/*
 
-# Install powerinfer Python module for runtime GPU split generation
-RUN pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip3 install --no-cache-dir numpy cvxopt gguf
+# Install Python packages for GPU split generation
+# cvxopt needs gcc to compile, so install it temporarily
+RUN microdnf -y install gcc python3-devel && \
+    pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip3 install --no-cache-dir numpy cvxopt gguf && \
+    microdnf -y remove gcc python3-devel && \
+    microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Copy binaries and libraries from builder
 COPY --from=builder /opt/powerinfer/build/bin/ /app/

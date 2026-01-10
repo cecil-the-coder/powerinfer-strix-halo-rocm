@@ -1,0 +1,268 @@
+# Benchmark comparison: PowerInfer vs standard llama.cpp on gfx1151
+# Both using Llama-7B class models with ROCm
+---
+# Job to download standard Llama-7B Q4 model if not present
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-llama7b-v2
+  namespace: llama-cpp
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      nodeSelector:
+        workload-type: gpu
+      tolerations:
+        - key: workload-type
+          operator: Equal
+          value: heavy
+          effect: NoSchedule
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: downloader
+          image: alpine:latest
+          securityContext:
+            privileged: true
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              apk add --no-cache curl
+              if [ -f /models/llama-7b-q4_0.gguf ]; then
+                echo "Model already exists"
+              else
+                echo "Downloading Llama-7B Q4_0 (3.5GB)..."
+                curl -L -o /models/llama-7b-q4_0.gguf \
+                  "https://huggingface.co/TheBloke/LLaMA-7B-GGUF/resolve/main/llama-7b.Q4_0.gguf"
+              fi
+              ls -la /models/
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          resources:
+            limits:
+              memory: 1Gi
+              cpu: "2"
+            requests:
+              memory: 512Mi
+              cpu: "1"
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models
+---
+# PowerInfer server with ReluLLaMA-7B (sparse inference)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: powerinfer-server
+  namespace: llama-cpp
+  labels:
+    app: powerinfer-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: powerinfer-server
+  template:
+    metadata:
+      labels:
+        app: powerinfer-server
+    spec:
+      nodeSelector:
+        workload-type: gpu
+      tolerations:
+        - key: workload-type
+          operator: Equal
+          value: heavy
+          effect: NoSchedule
+      containers:
+        - name: powerinfer
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-244de51
+          imagePullPolicy: Always
+          command:
+            - /app/server
+          args:
+            - --model
+            - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
+            - --ctx-size
+            - "2048"
+            - --vram-budget
+            - "16"
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8080"
+          env:
+            - name: ROCM_PATH
+              value: /opt/rocm
+            - name: HIP_PATH
+              value: /opt/rocm
+            - name: HSA_OVERRIDE_GFX_VERSION
+              value: "11.0.0"
+            - name: ROCBLAS_USE_HIPBLASLT
+              value: "1"
+            - name: LLAMA_HIP_UMA
+              value: "ON"
+            - name: HSA_ENABLE_SDMA
+              value: "0"
+            - name: GPU_MAX_HW_QUEUES
+              value: "1"
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: dev-kfd
+              mountPath: /dev/kfd
+            - name: dev-dri
+              mountPath: /dev/dri
+          securityContext:
+            privileged: true
+          resources:
+            limits:
+              memory: 80Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models
+        - name: dev-kfd
+          hostPath:
+            path: /dev/kfd
+        - name: dev-dri
+          hostPath:
+            path: /dev/dri
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: powerinfer-server
+  namespace: llama-cpp
+spec:
+  selector:
+    app: powerinfer-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  type: ClusterIP
+---
+# Standard llama.cpp server with Llama-7B Q4 (dense inference)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llamacpp-server
+  namespace: llama-cpp
+  labels:
+    app: llamacpp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llamacpp-server
+  template:
+    metadata:
+      labels:
+        app: llamacpp-server
+    spec:
+      nodeSelector:
+        workload-type: gpu
+      tolerations:
+        - key: workload-type
+          operator: Equal
+          value: heavy
+          effect: NoSchedule
+      containers:
+        - name: llamacpp
+          # Use same PowerInfer image with standard model (will use dense inference)
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-244de51
+          imagePullPolicy: Always
+          command:
+            - /app/server
+          args:
+            - --model
+            - /models/llama-7b-q4_0.gguf
+            - --ctx-size
+            - "2048"
+            - --n-gpu-layers
+            - "99"
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8080"
+          env:
+            - name: ROCM_PATH
+              value: /opt/rocm
+            - name: HIP_PATH
+              value: /opt/rocm
+            - name: HSA_OVERRIDE_GFX_VERSION
+              value: "11.0.0"
+            - name: ROCBLAS_USE_HIPBLASLT
+              value: "1"
+            - name: LLAMA_HIP_UMA
+              value: "ON"
+            - name: HSA_ENABLE_SDMA
+              value: "0"
+            - name: GPU_MAX_HW_QUEUES
+              value: "1"
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: dev-kfd
+              mountPath: /dev/kfd
+            - name: dev-dri
+              mountPath: /dev/dri
+          securityContext:
+            privileged: true
+          resources:
+            limits:
+              memory: 80Gi
+            requests:
+              cpu: "4"
+              memory: 16Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: llama-models
+        - name: dev-kfd
+          hostPath:
+            path: /dev/kfd
+        - name: dev-dri
+          hostPath:
+            path: /dev/dri
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llamacpp-server
+  namespace: llama-cpp
+spec:
+  selector:
+    app: llamacpp-server
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  type: ClusterIP

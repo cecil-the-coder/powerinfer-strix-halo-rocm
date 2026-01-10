@@ -27,29 +27,29 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-2ad6762
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-244de51
           imagePullPolicy: Always
           command:
-            - /app/server
+            - /app/main
           args:
             - --model
             - /models/ReluLLaMA-7B-PowerInfer-GGUF/llama-7b-relu.powerinfer.gguf
             - --ctx-size
-            - "4096"
-            # GPU layers for testing with amdgpu.mes=0 kernel param
-            - --n-gpu-layers
-            - "35"
-            - --host
-            - "0.0.0.0"
-            - --port
-            - "8080"
+            - "512"
+            # PowerInfer uses --vram-budget instead of --n-gpu-layers
+            - --vram-budget
+            - "16"
+            - -p
+            - "Hello, world!"
+            - -n
+            - "32"
           env:
             # ROCm 6.4.4 configuration for AMD Strix Halo (gfx1151)
             - name: ROCM_PATH
               value: /opt/rocm
             - name: HIP_PATH
               value: /opt/rocm
-            # Use gfx1100 kernels on gfx1151 for stability
+            # Use gfx1100 emulation (binary compiled for gfx1100)
             - name: HSA_OVERRIDE_GFX_VERSION
               value: "11.0.0"
             - name: ROCBLAS_USE_HIPBLASLT
