@@ -65,16 +65,14 @@ RUN chmod +x /opt/patches/apply-gfx1151-fix.sh && \
 # These fix segfaults during KV cache initialization and sparse tensor handling
 RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
 
-# Apply gguf compatibility fix for powerinfer-py
-# The standard gguf package lacks the Split.VRAM_CAPACITY key that powerinfer expects
-RUN python3 /opt/patches/apply-gguf-fix.py /opt/powerinfer
-
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Install powerinfer Python module for GPU split generation
 # CVXOPT_BUILD_GLPK=1 is required to build cvxopt with GLPK support for the solver
-RUN CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir torch numpy cvxopt gguf && \
+# Use PowerInfer's custom gguf-py (has VRAM_CAPACITY key) instead of PyPI gguf
+RUN CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir torch numpy cvxopt && \
+    cd /opt/powerinfer/gguf-py && pip3 install -e . && \
     cd /opt/powerinfer/powerinfer-py && pip3 install -e .
 
 # Build PowerInfer with HIP support for gfx1151
@@ -135,13 +133,17 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
 # cvxopt needs gcc, BLAS/LAPACK, and SuiteSparse to compile
 RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel glpk-devel && \
     pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir numpy cvxopt gguf && \
+    CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir numpy cvxopt && \
     microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Copy binaries and libraries from builder
 COPY --from=builder /opt/powerinfer/build/bin/ /app/
 COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
+
+# Copy PowerInfer's custom gguf-py (has VRAM_CAPACITY key for sparse inference)
+COPY --from=builder /opt/powerinfer/gguf-py /opt/gguf-py
+RUN pip3 install -e /opt/gguf-py
 
 # Copy powerinfer Python module
 COPY --from=builder /opt/powerinfer/powerinfer-py /opt/powerinfer-py
