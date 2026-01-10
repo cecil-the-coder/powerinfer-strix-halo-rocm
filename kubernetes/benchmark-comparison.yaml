@@ -81,9 +81,8 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          # Using sha-b7e2145 - GPU split generation fails gracefully (VRAM_CAPACITY issue)
-          # Server runs without sparse FFN offloading but still functional for comparison
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-b7e2145
+          # Using sha-8f1668d - includes PowerInfer's custom gguf-py for GPU split generation
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-8f1668d
           imagePullPolicy: Always
           command:
             - /app/server
