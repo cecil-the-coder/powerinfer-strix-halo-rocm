@@ -21,7 +21,7 @@ gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
 REPO
 EOF
 
-# Build dependencies - including ROCm compilers and HIP
+# Build dependencies - including ROCm compilers, HIP, and cvxopt build deps
 RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
     install \
@@ -30,6 +30,7 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
     rocminfo \
     git-core python3 python3-pip python3-devel \
+    blas-devel lapack-devel suitesparse-devel \
     && dnf clean all && rm -rf /var/cache/dnf/*
 
 # ROCm environment
