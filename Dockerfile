@@ -65,6 +65,10 @@ RUN chmod +x /opt/patches/apply-gfx1151-fix.sh && \
 # These fix segfaults during KV cache initialization and sparse tensor handling
 RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
 
+# Apply gguf compatibility fix for powerinfer-py
+# The standard gguf package lacks the Split.VRAM_CAPACITY key that powerinfer expects
+RUN python3 /opt/patches/apply-gguf-fix.py /opt/powerinfer
+
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
