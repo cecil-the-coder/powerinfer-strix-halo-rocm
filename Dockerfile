@@ -30,7 +30,7 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
     rocminfo \
     git-core python3 python3-pip python3-devel \
-    blas-devel lapack-devel suitesparse-devel \
+    blas-devel lapack-devel suitesparse-devel glpk-devel \
     && dnf clean all && rm -rf /var/cache/dnf/*
 
 # ROCm environment
@@ -128,7 +128,7 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
 
 # Install Python packages for GPU split generation
 # cvxopt needs gcc, BLAS/LAPACK, and SuiteSparse to compile
-RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel && \
+RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel glpk-devel && \
     pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip3 install --no-cache-dir numpy cvxopt gguf && \
     microdnf clean all && rm -rf /var/cache/dnf/*
