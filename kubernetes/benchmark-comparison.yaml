@@ -81,7 +81,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: powerinfer
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-244de51
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-9710fc1
           imagePullPolicy: Always
           command:
             - /app/server
@@ -131,7 +131,7 @@ spec:
               memory: 16Gi
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
@@ -188,7 +188,7 @@ spec:
       containers:
         - name: llamacpp
           # Use same PowerInfer image with standard model (will use dense inference)
-          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-244de51
+          image: ghcr.io/cecil-the-coder/powerinfer-strix-halo-rocm:sha-9710fc1
           imagePullPolicy: Always
           command:
             - /app/server
@@ -238,7 +238,7 @@ spec:
               memory: 16Gi
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10

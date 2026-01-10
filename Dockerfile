@@ -69,7 +69,8 @@ RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
 # Install powerinfer Python module for GPU split generation
-RUN pip3 install --no-cache-dir torch numpy cvxopt gguf && \
+# CVXOPT_BUILD_GLPK=1 is required to build cvxopt with GLPK support for the solver
+RUN CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir torch numpy cvxopt gguf && \
     cd /opt/powerinfer/powerinfer-py && pip3 install -e .
 
 # Build PowerInfer with HIP support for gfx1151
@@ -130,7 +131,7 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
 # cvxopt needs gcc, BLAS/LAPACK, and SuiteSparse to compile
 RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel glpk-devel && \
     pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-    pip3 install --no-cache-dir numpy cvxopt gguf && \
+    CVXOPT_BUILD_GLPK=1 pip3 install --no-cache-dir numpy cvxopt gguf && \
     microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Copy binaries and libraries from builder
