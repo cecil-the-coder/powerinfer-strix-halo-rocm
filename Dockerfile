@@ -60,6 +60,10 @@ COPY patches/ /opt/patches/
 RUN chmod +x /opt/patches/apply-gfx1151-fix.sh && \
     /opt/patches/apply-gfx1151-fix.sh /opt/powerinfer
 
+# Apply null pointer crash fixes for sparse inference on gfx1151
+# These fix segfaults during KV cache initialization and sparse tensor handling
+RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
+
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
