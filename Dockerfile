@@ -67,6 +67,10 @@ RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
+# Install powerinfer Python module for GPU split generation
+RUN pip3 install --no-cache-dir torch numpy cvxopt gguf && \
+    cd /opt/powerinfer/powerinfer-py && pip3 install -e .
+
 # Build PowerInfer with HIP support for gfx1151
 # Must explicitly set CC/CXX to ROCm compilers to handle HIP-specific flags
 # Include hip_shfl_fix.h for proper warp shuffle compatibility
@@ -111,19 +115,28 @@ gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
 REPO
 EOF
 
-# Runtime dependencies only
+# Runtime dependencies only (including Python for GPU split generation)
 RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
     --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
     install \
     bash ca-certificates libatomic libstdc++ libgcc libgomp \
     hip-runtime-amd rocblas hipblas \
     rocminfo \
+    python3 python3-pip \
     && microdnf clean all && rm -rf /var/cache/dnf/*
+
+# Install powerinfer Python module for runtime GPU split generation
+RUN pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip3 install --no-cache-dir numpy cvxopt gguf
 
 # Copy binaries and libraries from builder
 COPY --from=builder /opt/powerinfer/build/bin/ /app/
 COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
+
+# Copy powerinfer Python module
+COPY --from=builder /opt/powerinfer/powerinfer-py /opt/powerinfer-py
+RUN pip3 install -e /opt/powerinfer-py
 
 # Library paths
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf \
