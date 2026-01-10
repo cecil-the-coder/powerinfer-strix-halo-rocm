@@ -130,7 +130,6 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
 RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel && \
     pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip3 install --no-cache-dir numpy cvxopt gguf && \
-    microdnf -y remove gcc python3-devel && \
     microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Copy binaries and libraries from builder
