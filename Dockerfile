@@ -126,8 +126,8 @@ RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
     && microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Install Python packages for GPU split generation
-# cvxopt needs gcc and BLAS/LAPACK to compile; keep runtime libs for cvxopt
-RUN microdnf -y install gcc python3-devel blas-devel lapack-devel && \
+# cvxopt needs gcc, BLAS/LAPACK, and SuiteSparse to compile
+RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-devel && \
     pip3 install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip3 install --no-cache-dir numpy cvxopt gguf && \
     microdnf -y remove gcc python3-devel && \
