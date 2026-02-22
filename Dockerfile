@@ -164,7 +164,7 @@ EOF
 RUN microdnf -y --nodocs --setopt=install_weak_deps=0 \
     --exclude='*sdk*' --exclude='*samples*' --exclude='*-doc*' --exclude='*-docs*' \
     install \
-    bash ca-certificates libatomic libstdc++ libgcc libgomp \
+    bash ca-certificates libatomic libstdc++ libgcc libgomp libaio \
     hip-runtime-amd rocblas hipblas \
     rocminfo \
     python3 python3-pip \
