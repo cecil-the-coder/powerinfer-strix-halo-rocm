@@ -30,7 +30,7 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
     rocminfo \
     git-core python3 python3-pip python3-devel \
-    liburing-devel \
+    liburing-devel libaio-devel \
     blas-devel lapack-devel suitesparse-devel glpk-devel \
     && dnf clean all && rm -rf /var/cache/dnf/*
 
@@ -122,6 +122,8 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
     -DHIP_PLATFORM=amd \
     -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -include /opt/patches/hip_shfl_fix.h" \
     -DCMAKE_SKIP_INSTALL_RULES=TRUE \
+    -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/lib64" \
+    -DCMAKE_EXE_LINKER_FLAGS="-L/usr/lib64" \
     && cmake --build build --config Release --target llama-server -- -j$(nproc)
 
 RUN if [ ! -f build/bin/llama-server ]; then echo "ERROR: llama-server (server-moe) not found" && exit 1; fi
