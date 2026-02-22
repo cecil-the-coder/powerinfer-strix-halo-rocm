@@ -114,7 +114,8 @@ RUN echo "=== Built binaries ===" && \
 # Build SmallThinker server (/app/server-moe) — MoE sparse inference for SmallThinker models
 # Uses GGML_HIP (newer llama.cpp flag) instead of LLAMA_HIPBLAS (legacy PowerInfer flag)
 WORKDIR /opt/powerinfer/smallthinker
-RUN git submodule update --init --recursive
+RUN git submodule update --init --recursive && \
+    cp /opt/patches/powerinfer-cuda-stub.h ggml/src/ggml-cuda/powerinfer-cuda.h
 RUN export LIBRARY_PATH="/usr/lib64:${LIBRARY_PATH}" && \
     CC=/opt/rocm/llvm/bin/amdclang \
     CXX=/opt/rocm/llvm/bin/amdclang++ \
