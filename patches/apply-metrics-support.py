@@ -189,13 +189,13 @@ def main():
     #    Use plain str.replace() — re.sub would corrupt C++ "\n" string
     #    literals by converting them to real newlines in the output file.
     # ------------------------------------------------------------------
-    metrics_handler = '''
+    metrics_handler = r'''
     svr.Get("/metrics", [&llama](const httplib::Request &, httplib::Response & res)
             {
                 if (!llama.endpoint_metrics)
                 {
                     res.status = 404;
-                    res.set_content("{\\"error\\":\\"metrics endpoint disabled, start with --metrics\\"}", "application/json");
+                    res.set_content("{\"error\":\"metrics endpoint disabled, start with --metrics\"}", "application/json");
                     return;
                 }
 
