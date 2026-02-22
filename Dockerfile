@@ -120,6 +120,7 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
     -DHIP_PATH=/opt/rocm \
     -DHIP_PLATFORM=amd \
     -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -include /opt/patches/hip_shfl_fix.h" \
+    -DCMAKE_SKIP_INSTALL_RULES=TRUE \
     && cmake --build build --config Release --target llama-server -- -j$(nproc)
 
 RUN if [ ! -f build/bin/llama-server ]; then echo "ERROR: llama-server (server-moe) not found" && exit 1; fi
