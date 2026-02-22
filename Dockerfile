@@ -65,6 +65,9 @@ RUN chmod +x /opt/patches/apply-gfx1151-fix.sh && \
 # These fix segfaults during KV cache initialization and sparse tensor handling
 RUN python3 /opt/patches/apply-null-pointer-fixes.py /opt/powerinfer
 
+# Add Prometheus /metrics endpoint to examples/server (not present in upstream)
+RUN python3 /opt/patches/apply-metrics-support.py /opt/powerinfer
+
 # Install Python dependencies (optional)
 RUN pip3 install --no-cache-dir -r requirements.txt || true
 
@@ -98,6 +101,30 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
 RUN echo "=== Built binaries ===" && \
     ls -la build/bin/ && \
     if [ ! -f build/bin/main ]; then echo "ERROR: main not found" && exit 1; fi
+
+# Build SmallThinker server (/app/server-moe) — MoE sparse inference for SmallThinker models
+# Uses GGML_HIP (newer llama.cpp flag) instead of LLAMA_HIPBLAS (legacy PowerInfer flag)
+WORKDIR /opt/powerinfer/smallthinker
+RUN git submodule update --init --recursive
+RUN CC=/opt/rocm/llvm/bin/amdclang \
+    CXX=/opt/rocm/llvm/bin/amdclang++ \
+    cmake -S . -B build \
+    -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/amdclang \
+    -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/amdclang++ \
+    -DGGML_HIP=ON \
+    -DAMDGPU_TARGETS=gfx1100 \
+    -DGGML_HIP_UMA=ON \
+    -DROCM_PATH=/opt/rocm \
+    -DHIP_PATH=/opt/rocm \
+    -DHIP_PLATFORM=amd \
+    -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -include /opt/patches/hip_shfl_fix.h" \
+    && cmake --build build --config Release --target llama-server -- -j$(nproc)
+
+RUN if [ ! -f build/bin/llama-server ]; then echo "ERROR: llama-server (server-moe) not found" && exit 1; fi
+
+WORKDIR /opt/powerinfer
 
 # Copy libs
 RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; && ldconfig
@@ -137,7 +164,10 @@ RUN microdnf -y install gcc python3-devel blas-devel lapack-devel suitesparse-de
     microdnf clean all && rm -rf /var/cache/dnf/*
 
 # Copy binaries and libraries from builder
+# /app/server     — legacy PowerInfer sparse server (ReluLLaMA, Falcon, Bamboo, ProSparse)
+# /app/server-moe — SmallThinker MoE server (SmallThinker-4B, SmallThinker-21B)
 COPY --from=builder /opt/powerinfer/build/bin/ /app/
+COPY --from=builder /opt/powerinfer/smallthinker/build/bin/llama-server /app/server-moe
 COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
 
