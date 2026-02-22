@@ -34,11 +34,12 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     blas-devel lapack-devel suitesparse-devel glpk-devel \
     && dnf clean all && rm -rf /var/cache/dnf/*
 
-# Build liburing static library from source
+# Build liburing from source (headers + static lib)
 # Fedora 43 liburing-devel omits liburing.a; the smallthinker build requires -Wl,-Bstatic -luring
 RUN git clone --depth 1 https://github.com/axboe/liburing.git /tmp/liburing-src \
-    && cd /tmp/liburing-src && ./configure && make \
-    && cp src/liburing.a /usr/lib64/ \
+    && cd /tmp/liburing-src \
+    && ./configure --prefix=/usr --libdir=/usr/lib64 --includedir=/usr/include \
+    && make install \
     && rm -rf /tmp/liburing-src
 
 # ROCm environment
