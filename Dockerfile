@@ -30,9 +30,16 @@ RUN dnf -y --nodocs --setopt=install_weak_deps=False \
     rocblas rocblas-devel hipblas hipblas-devel rocm-cmake libomp-devel libomp \
     rocminfo \
     git-core python3 python3-pip python3-devel \
-    liburing-devel libaio-devel \
+    libaio-devel \
     blas-devel lapack-devel suitesparse-devel glpk-devel \
     && dnf clean all && rm -rf /var/cache/dnf/*
+
+# Build liburing static library from source
+# Fedora 43 liburing-devel omits liburing.a; the smallthinker build requires -Wl,-Bstatic -luring
+RUN git clone --depth 1 https://github.com/axboe/liburing.git /tmp/liburing-src \
+    && cd /tmp/liburing-src && ./configure && make \
+    && cp src/liburing.a /usr/lib64/ \
+    && rm -rf /tmp/liburing-src
 
 # ROCm environment
 ENV ROCM_PATH=/opt/rocm \
