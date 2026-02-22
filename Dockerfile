@@ -138,8 +138,10 @@ RUN if [ ! -f build/bin/llama-server ]; then echo "ERROR: llama-server (server-m
 
 WORKDIR /opt/powerinfer
 
-# Copy libs
-RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; && ldconfig
+# Copy libs from both builds into /usr/lib64 so runtime COPY globs find them
+RUN find /opt/powerinfer/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; && \
+    find /opt/powerinfer/smallthinker/build -type f -name 'lib*.so*' -exec cp {} /usr/lib64/ \; && \
+    ldconfig
 
 
 # Runtime stage - minimal Fedora with ROCm runtime
@@ -182,6 +184,7 @@ COPY --from=builder /opt/powerinfer/build/bin/ /app/
 COPY --from=builder /opt/powerinfer/smallthinker/build/bin/llama-server /app/server-moe
 COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
+COPY --from=builder /usr/lib64/libmtmd*.so* /usr/lib64/
 
 # Copy PowerInfer's custom gguf-py (has VRAM_CAPACITY key for sparse inference)
 COPY --from=builder /opt/powerinfer/gguf-py /opt/gguf-py
