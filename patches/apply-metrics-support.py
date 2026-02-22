@@ -186,14 +186,16 @@ def main():
 
     # ------------------------------------------------------------------
     # 8. GET /metrics HTTP handler (insert before svr.set_logger)
+    #    Use plain str.replace() — re.sub would corrupt C++ "\n" string
+    #    literals by converting them to real newlines in the output file.
     # ------------------------------------------------------------------
-    metrics_handler = r'''
+    metrics_handler = '''
     svr.Get("/metrics", [&llama](const httplib::Request &, httplib::Response & res)
             {
                 if (!llama.endpoint_metrics)
                 {
                     res.status = 404;
-                    res.set_content("{\"error\":\"metrics endpoint disabled, start with --metrics\"}", "application/json");
+                    res.set_content("{\\"error\\":\\"metrics endpoint disabled, start with --metrics\\"}", "application/json");
                     return;
                 }
 
@@ -260,12 +262,19 @@ def main():
 
 '''
 
-    applied += apply_fix(
-        server_cpp,
-        r'(    svr\.set_logger\(log_server_request\);)',
-        metrics_handler + r'\1',
-        "Add GET /metrics HTTP handler",
-    )
+    target = '    svr.set_logger(log_server_request);'
+    with open(server_cpp, 'r') as f:
+        content = f.read()
+    if target in content:
+        if not os.path.exists(server_cpp + '.backup.metrics'):
+            shutil.copy2(server_cpp, server_cpp + '.backup.metrics')
+        new_content = content.replace(target, metrics_handler + target, 1)
+        with open(server_cpp, 'w') as f:
+            f.write(new_content)
+        print("  OK: Add GET /metrics HTTP handler")
+        applied += 1
+    else:
+        print("  SKIP (pattern not found): Add GET /metrics HTTP handler")
 
     print(f"\n=== Done: {applied}/8 fixes applied ===")
     if applied < 8:
