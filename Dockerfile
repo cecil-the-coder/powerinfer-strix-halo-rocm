@@ -107,7 +107,8 @@ RUN echo "=== Built binaries ===" && \
 # Uses GGML_HIP (newer llama.cpp flag) instead of LLAMA_HIPBLAS (legacy PowerInfer flag)
 WORKDIR /opt/powerinfer/smallthinker
 RUN git submodule update --init --recursive
-RUN CC=/opt/rocm/llvm/bin/amdclang \
+RUN export LIBRARY_PATH="/usr/lib64:${LIBRARY_PATH}" && \
+    CC=/opt/rocm/llvm/bin/amdclang \
     CXX=/opt/rocm/llvm/bin/amdclang++ \
     cmake -S . -B build \
     -G Ninja \
@@ -122,8 +123,6 @@ RUN CC=/opt/rocm/llvm/bin/amdclang \
     -DHIP_PLATFORM=amd \
     -DCMAKE_HIP_FLAGS="--rocm-path=/opt/rocm -include /opt/patches/hip_shfl_fix.h" \
     -DCMAKE_SKIP_INSTALL_RULES=TRUE \
-    -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/lib64" \
-    -DCMAKE_EXE_LINKER_FLAGS="-L/usr/lib64" \
     && cmake --build build --config Release --target llama-server -- -j$(nproc)
 
 RUN if [ ! -f build/bin/llama-server ]; then echo "ERROR: llama-server (server-moe) not found" && exit 1; fi
