@@ -185,6 +185,7 @@ COPY --from=builder /opt/powerinfer/smallthinker/build/bin/llama-server /app/ser
 COPY --from=builder /usr/lib64/libllama*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libggml*.so* /usr/lib64/
 COPY --from=builder /usr/lib64/libmtmd*.so* /usr/lib64/
+COPY --from=builder /usr/lib64/libpowerinfer*.so* /usr/lib64/
 
 # Copy PowerInfer's custom gguf-py (has VRAM_CAPACITY key for sparse inference)
 COPY --from=builder /opt/powerinfer/gguf-py /opt/gguf-py
