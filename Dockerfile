@@ -1,5 +1,5 @@
 # SmallThinker MoE inference for AMD Strix Halo (gfx1151)
-# ROCm 7 + GGML HIP backend (no legacy hipBLAS API dependency)
+# ROCm 6.4.4 + GGML HIP backend
 #
 # /app/server — SmallThinker MoE llama-server (powerinfer-fused-sparse-moe)
 #
@@ -9,11 +9,11 @@
 # Build stage
 FROM registry.fedoraproject.org/fedora:43 AS builder
 
-# ROCm 7 repo
+# ROCm 6.4.4 repo
 RUN tee /etc/yum.repos.d/rocm.repo <<'REPO'
-[ROCm]
-name=ROCm7
-baseurl=https://repo.radeon.com/rocm/el9/7.0.0/main
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -89,11 +89,11 @@ RUN find /opt/powerinfer/smallthinker/build -type f -name 'lib*.so*' -exec cp {}
 # Runtime stage - minimal Fedora with ROCm runtime
 FROM registry.fedoraproject.org/fedora-minimal:43
 
-# ROCm 7 repo
+# ROCm 6.4.4 repo
 RUN tee /etc/yum.repos.d/rocm.repo <<'REPO'
-[ROCm]
-name=ROCm7
-baseurl=https://repo.radeon.com/rocm/el9/7.0.0/main
+[ROCm-6.4.4]
+name=ROCm6.4.4
+baseurl=https://repo.radeon.com/rocm/el9/6.4.4/main
 enabled=1
 priority=50
 gpgcheck=1
@@ -132,6 +132,6 @@ RUN mkdir -p /models
 CMD ["/app/server", "--help"]
 
 LABEL maintainer="PowerInfer ROCm Build" \
-      description="SmallThinker MoE inference with ROCm 7 for AMD Strix Halo (gfx1151)" \
-      rocm.version="7.0.0" \
+      description="SmallThinker MoE inference with ROCm 6.4.4 for AMD Strix Halo (gfx1151)" \
+      rocm.version="6.4.4" \
       gpu.target="gfx1151"
